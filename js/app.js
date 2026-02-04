@@ -24,9 +24,11 @@ const App = {
     pending: 'worklog_pending_ms',
     paused: 'worklog_paused',
     awaiting: 'worklog_awaiting',
-    lastSeen: 'worklog_last_seen_sha'
+    lastSeen: 'worklog_last_seen_sha',
+    interval: 'worklog_interval_minutes'
   },
   lastSeenSha: null,
+  intervalMs: 60 * 60 * 1000,
 
   init() {
     this.cacheElements();
@@ -34,6 +36,7 @@ const App = {
     this.restoreDraft();
     this.loadTimerState();
     this.loadLastSeen();
+    this.loadInterval();
     this.setupAudioUnlock();
     this.originalTitle = document.title;
 
@@ -58,6 +61,7 @@ const App = {
       pauseBtn: document.getElementById('pause-btn'),
       helpBtn: document.getElementById('help-btn'),
       counter: document.getElementById('counter'),
+      intervalInput: document.getElementById('interval-input'),
       userPill: document.getElementById('user-pill'),
       userAvatar: document.getElementById('user-avatar'),
       userName: document.getElementById('user-name'),
@@ -83,6 +87,7 @@ const App = {
     this.elements.userPill.addEventListener('click', () => this.openProfile());
     this.elements.registerLog.addEventListener('click', () => this.submitLog());
     this.elements.cancelLog.addEventListener('click', () => this.cancelLog());
+    this.elements.intervalInput.addEventListener('change', () => this.updateInterval());
 
     this.elements.logText.addEventListener('input', () => {
       localStorage.setItem('worklog_draft', this.elements.logText.value);
@@ -160,6 +165,14 @@ const App = {
     this.isAwaitingLog = awaiting === 'true' && this.pendingMs > 0;
   },
 
+  loadInterval() {
+    const stored = Number(localStorage.getItem(this.storage.interval));
+    if (!Number.isNaN(stored) && stored >= 1 && stored <= 120) {
+      this.intervalMs = stored * 60 * 1000;
+    }
+    this.elements.intervalInput.value = Math.round(this.intervalMs / 60000);
+  },
+
   loadLastSeen() {
     const stored = localStorage.getItem(this.storage.lastSeen);
     if (stored) {
@@ -178,6 +191,21 @@ const App = {
     if (!sha) return;
     this.lastSeenSha = sha;
     localStorage.setItem(this.storage.lastSeen, sha);
+  },
+
+  updateInterval() {
+    const raw = Number(this.elements.intervalInput.value);
+    const minutes = Math.min(120, Math.max(1, Number.isNaN(raw) ? 60 : raw));
+    this.intervalMs = minutes * 60 * 1000;
+    this.elements.intervalInput.value = minutes;
+    localStorage.setItem(this.storage.interval, String(minutes));
+
+    if (!this.isAwaitingLog && !this.isPaused && this.elapsedMs >= this.intervalMs) {
+      this.elapsedMs = this.intervalMs;
+      this.promptLog(this.intervalMs);
+    } else {
+      this.updateCounter();
+    }
   },
 
   showLoginScreen() {
@@ -245,9 +273,9 @@ const App = {
 
     if (this.isAwaitingLog && this.pendingMs > 0) {
       this.promptLog(this.pendingMs);
-    } else if (!this.isPaused && this.elapsedMs >= 60 * 60 * 1000) {
-      this.elapsedMs = 60 * 60 * 1000;
-      this.promptLog(60 * 60 * 1000);
+    } else if (!this.isPaused && this.elapsedMs >= this.intervalMs) {
+      this.elapsedMs = this.intervalMs;
+      this.promptLog(this.intervalMs);
     }
 
     this.timerInterval = setInterval(() => this.tick(), 1000);
@@ -269,9 +297,9 @@ const App = {
       this.elapsedMs += delta;
     }
 
-    if (this.elapsedMs >= 60 * 60 * 1000 && !this.isAwaitingLog) {
-      this.elapsedMs = 60 * 60 * 1000;
-      this.promptLog(60 * 60 * 1000);
+    if (this.elapsedMs >= this.intervalMs && !this.isAwaitingLog) {
+      this.elapsedMs = this.intervalMs;
+      this.promptLog(this.intervalMs);
     }
 
     this.updateCounter();

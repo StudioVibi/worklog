@@ -246,6 +246,25 @@ button.danger {
   cursor: pointer;
 }
 
+.interval-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  background: #f8f8f8;
+  padding: 4px 8px;
+}
+
+.interval-control input {
+  width: 52px;
+  padding: 2px 4px;
+  font-size: 0.75rem;
+  border: 1px solid var(--line-soft);
+  background: #fff;
+}
+
 .icon-btn {
   width: 32px;
   height: 32px;
