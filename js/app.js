@@ -397,8 +397,9 @@ const App = {
     this.elements.tabTimeline.classList.add('active');
     requestAnimationFrame(() => {
       const today = new Date();
-      this.ensureTimelineSized(today, 'left');
-      this.positionTimelineOnDate(today, 'left');
+      const periodStart = this.startOfPeriod(today, this.timeline.scale);
+      this.ensureTimelineSized(periodStart, 'left');
+      this.positionTimelineOnDate(periodStart, 'left');
       this.scheduleTimelineRender({ grid: true, rows: true });
     });
   },
@@ -903,9 +904,10 @@ const App = {
       btn.classList.toggle('active', btn.dataset.scale === scale);
     });
 
+    const periodStart = this.startOfPeriod(today, scale);
     this.timeline.anchorStart = null;
-    this.ensureTimelineSized(today, 'left');
-    this.positionTimelineOnDate(today, 'left');
+    this.ensureTimelineSized(periodStart, 'left');
+    this.positionTimelineOnDate(periodStart, 'left');
     this.renderTimeline();
   },
 
