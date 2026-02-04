@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Worklog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app" class="app">
+    <section id="login-screen" class="screen">
+      <div class="login-card">
+        <div class="login-header">
+          <div class="badge">Studio Vibi</div>
+          <h1>Worklog</h1>
+          <p>Lightweight hourly logging for transparent, flexible work.</p>
+        </div>
+
+        <label class="field">
+          <span>GitHub Personal Access Token</span>
+          <input id="pat-input" type="password" placeholder="github_pat_..." autocomplete="off" />
+        </label>
+
+        <button id="login-btn" class="primary">Sign in</button>
+
+        <div class="login-notes">
+          <p>Token needs access to the private repo <strong>StudioVibi/worklogs</strong>.</p>
+          <p>Recommended scopes: <strong>repo</strong> (classic) or repository read/write permissions.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="main-screen" class="screen hidden">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-title">Worklog</div>
+          <div class="brand-status" id="session-status">In session</div>
+        </div>
+
+        <div class="topbar-right">
+          <div class="counter" id="counter">Unregistered: 0m</div>
+          <button id="pause-btn" class="ghost">Pause</button>
+          <button id="help-btn" class="icon">?</button>
+          <button id="logout-btn" class="ghost">Log out</button>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="log-shell">
+          <div class="log-header">
+            <div>
+              <h2>Live log feed</h2>
+              <p>Newest entries appear at the bottom.</p>
+            </div>
+            <div class="user-pill">
+              <img id="user-avatar" alt="" />
+              <span id="user-name">@user</span>
+            </div>
+          </div>
+
+          <div id="log-container" class="log-container">
+            <div id="log-loading" class="log-loading">Loading logs...</div>
+            <div id="log-list" class="log-list"></div>
+            <div id="log-empty" class="log-empty hidden">No logs yet.</div>
+          </div>
+        </div>
+      </main>
+    </section>
+  </div>
+
+  <div id="log-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>What did you do in the last hour?</h2>
+        <p>Keep it short — 1 or 2 words is enough.</p>
+      </div>
+      <textarea id="log-text" rows="4" placeholder="e.g. auth debug"></textarea>
+      <div class="modal-actions">
+        <button id="cancel-log" class="danger">Cancel</button>
+        <button id="register-log" class="primary">Register</button>
+      </div>
+      <div class="modal-hint">Ctrl+Enter / Cmd+Enter to register</div>
+    </div>
+  </div>
+
+  <div id="help-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>About Worklog</h2>
+      </div>
+      <div class="help-text">
+        <p><strong>Worklog</strong> is a lightweight activity log used for visibility, billing, and historical context. When you choose to work, keep this tab open.</p>
+        <p>Every hour you will hear a beep and a modal will ask for a short description of what you did. Press <strong>Register</strong> (or Ctrl/Cmd+Enter) to save it. If you forgot the tab open, press <strong>Cancel</strong> to discard that hour.</p>
+        <p>You can pause/resume at any time. Closing the tab ends the session.</p>
+        <p>This is <strong>not</strong> a time clock. There are no mandatory schedules, minimum hours, or penalties. It is a voluntary log for freelancers/PJ billing and transparency, not a requirement to be online at specific times.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="primary" data-close>Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="js/github.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
