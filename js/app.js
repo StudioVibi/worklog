@@ -511,18 +511,30 @@ const App = {
       ctx.resume();
     }
 
-    const oscillator = ctx.createOscillator();
+    const now = ctx.currentTime;
     const gain = ctx.createGain();
-
-    oscillator.type = 'sine';
-    oscillator.frequency.value = 880;
-    gain.gain.value = 0.15;
-
-    oscillator.connect(gain);
+    gain.gain.value = 0.0;
     gain.connect(ctx.destination);
 
-    oscillator.start();
-    oscillator.stop(ctx.currentTime + 0.25);
+    const tones = [
+      { freq: 440, start: now, duration: 0.18 },
+      { freq: 660, start: now + 0.22, duration: 0.14 }
+    ];
+
+    tones.forEach(({ freq, start, duration }) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = freq;
+      osc.connect(gain);
+
+      // Soft attack/decay for a gentle chime
+      gain.gain.setValueAtTime(0.0, start);
+      gain.gain.linearRampToValueAtTime(0.06, start + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+
+      osc.start(start);
+      osc.stop(start + duration);
+    });
   },
 
   toast(message, type = 'info') {
