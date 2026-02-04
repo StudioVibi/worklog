@@ -374,9 +374,23 @@ const App = {
         this.elements.logLoading.classList.remove('hidden');
       }
       const entries = await GitHub.listLogTree();
+      const currentPaths = new Set(entries.map(entry => entry.path));
+      let removedAny = false;
+
+      for (const existingPath of this.logsByPath.keys()) {
+        if (!currentPaths.has(existingPath)) {
+          this.logsByPath.delete(existingPath);
+          removedAny = true;
+        }
+      }
+
       const newEntries = entries.filter(entry => !this.logsByPath.has(entry.path));
 
       if (newEntries.length === 0) {
+        if (removedAny) {
+          this.renderLogs();
+          return;
+        }
         this.updateLogUI();
         return;
       }
