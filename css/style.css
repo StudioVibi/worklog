@@ -324,11 +324,38 @@ button.danger {
 
 .log-header {
   display: flex;
-  justify-content: flex-start;
-  align-items: flex-start;
+  justify-content: space-between;
+  align-items: center;
   gap: 12px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--line-soft);
+}
+
+.tab-bar {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.tab-btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}
+
+.logs-view,
+.timeline-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .user-pill {
@@ -395,6 +422,130 @@ button.danger {
   color: var(--ink);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.timeline-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: #fff;
+}
+
+.timeline-range {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.timeline-scales {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.scale-btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.scale-btn.active {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}
+
+.timeline-scroll {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  background: #fafafa;
+}
+
+.timeline-canvas {
+  position: relative;
+  min-height: 100%;
+}
+
+.timeline-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.timeline-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #e5e7eb;
+}
+
+.timeline-label {
+  position: absolute;
+  top: 4px;
+  font-size: 0.7rem;
+  color: #6b7280;
+}
+
+.timeline-rows {
+  position: relative;
+  z-index: 2;
+}
+
+.timeline-row {
+  display: flex;
+  border-bottom: 1px solid var(--line-soft);
+  min-height: 38px;
+  position: relative;
+}
+
+.timeline-user {
+  position: sticky;
+  left: 0;
+  background: #f8f8f8;
+  border-right: 1px solid var(--line-soft);
+  width: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+}
+
+.timeline-user img {
+  width: 28px;
+  height: 28px;
+  border-radius: 0;
+  border: 1px solid var(--line-soft);
+}
+
+.timeline-track {
+  position: relative;
+  flex: 1;
+  min-height: 38px;
+}
+
+.timeline-bar {
+  position: absolute;
+  top: 8px;
+  height: 22px;
+  background: #111;
+  opacity: 0.85;
+}
+
+.timeline-tooltip {
+  position: fixed;
+  z-index: 2000;
+  background: #111;
+  color: #fff;
+  padding: 10px 12px;
+  font-size: 0.75rem;
+  max-width: 320px;
+  white-space: pre-wrap;
+  pointer-events: none;
 }
 
 .log-user-link {

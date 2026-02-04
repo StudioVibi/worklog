@@ -90,9 +90,16 @@ const GitHub = {
   },
 
   async listLogTree() {
-    const tree = await this.api(`/repos/${this.owner}/${this.repo}/git/trees/main?recursive=1`);
-    if (!tree.tree) return [];
-    return tree.tree.filter(entry => entry.type === 'blob' && entry.path.startsWith('logs/'));
+    try {
+      const tree = await this.api(`/repos/${this.owner}/${this.repo}/git/trees/main?recursive=1`);
+      if (!tree.tree) return [];
+      return tree.tree.filter(entry => entry.type === 'blob' && entry.path.startsWith('logs/'));
+    } catch (err) {
+      if (String(err.message).toLowerCase().includes('not found')) {
+        return [];
+      }
+      throw err;
+    }
   },
 
   async getHeadCommitSha() {

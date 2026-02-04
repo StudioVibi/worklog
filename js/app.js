@@ -30,6 +30,14 @@ const App = {
   },
   lastSeenSha: null,
   intervalMs: 60 * 60 * 1000,
+  timeline: {
+    scale: 'daily',
+    periodCount: 120,
+    periodWidth: { daily: 140, weekly: 200, monthly: 220 },
+    anchorStart: null,
+    initialized: false,
+    adjusting: false
+  },
 
   init() {
     this.cacheElements();
@@ -70,6 +78,17 @@ const App = {
       logList: document.getElementById('log-list'),
       logLoading: document.getElementById('log-loading'),
       logEmpty: document.getElementById('log-empty'),
+      viewTitle: document.getElementById('view-title'),
+      tabLogs: document.getElementById('tab-logs'),
+      tabTimeline: document.getElementById('tab-timeline'),
+      logsView: document.getElementById('logs-view'),
+      timelineView: document.getElementById('timeline-view'),
+      timelineRange: document.getElementById('timeline-range'),
+      timelineScroll: document.getElementById('timeline-scroll'),
+      timelineCanvas: document.getElementById('timeline-canvas'),
+      timelineGrid: document.getElementById('timeline-grid'),
+      timelineRows: document.getElementById('timeline-rows'),
+      timelineTooltip: document.getElementById('timeline-tooltip'),
       logModal: document.getElementById('log-modal'),
       logText: document.getElementById('log-text'),
       registerLog: document.getElementById('register-log'),
@@ -89,6 +108,14 @@ const App = {
     this.elements.registerLog.addEventListener('click', () => this.submitLog());
     this.elements.cancelLog.addEventListener('click', () => this.cancelLog());
     this.elements.intervalInput.addEventListener('change', () => this.updateInterval());
+    this.elements.tabLogs.addEventListener('click', () => this.showLogsTab());
+    this.elements.tabTimeline.addEventListener('click', () => this.showTimelineTab());
+
+    document.querySelectorAll('.scale-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.setTimelineScale(btn.dataset.scale));
+    });
+
+    this.elements.timelineScroll.addEventListener('scroll', () => this.handleTimelineScroll());
 
     this.elements.logText.addEventListener('input', () => {
       localStorage.setItem('worklog_draft', this.elements.logText.value);
@@ -303,7 +330,25 @@ const App = {
 
     this.startTimer();
     await this.loadLogs();
+    this.initTimeline();
     this.startPolling();
+  },
+
+  showLogsTab() {
+    this.elements.viewTitle.textContent = 'Logs';
+    this.elements.logsView.classList.remove('hidden');
+    this.elements.timelineView.classList.add('hidden');
+    this.elements.tabLogs.classList.add('active');
+    this.elements.tabTimeline.classList.remove('active');
+  },
+
+  showTimelineTab() {
+    this.elements.viewTitle.textContent = 'Timeline';
+    this.elements.logsView.classList.add('hidden');
+    this.elements.timelineView.classList.remove('hidden');
+    this.elements.tabLogs.classList.remove('active');
+    this.elements.tabTimeline.classList.add('active');
+    this.renderTimeline();
   },
 
   openProfile() {
@@ -703,6 +748,357 @@ const App = {
     }
   },
 
+  initTimeline() {
+    if (this.timeline.initialized) return;
+    this.timeline.initialized = true;
+
+    const now = new Date();
+    const half = Math.floor(this.timeline.periodCount / 2);
+    this.timeline.anchorStart = this.startOfPeriod(
+      this.addPeriods(now, -half, this.timeline.scale),
+      this.timeline.scale
+    );
+
+    this.updateTimelineCanvas();
+
+    requestAnimationFrame(() => {
+      this.centerTimeline();
+      this.renderTimeline();
+    });
+  },
+
+  updateTimelineCanvas() {
+    const width = this.timeline.periodCount * this.timeline.periodWidth[this.timeline.scale];
+    this.elements.timelineCanvas.style.width = `${width}px`;
+  },
+
+  centerTimeline() {
+    const totalWidth = this.timeline.periodCount * this.timeline.periodWidth[this.timeline.scale];
+    const viewWidth = this.elements.timelineScroll.clientWidth;
+    const target = Math.max(0, (totalWidth - viewWidth) / 2);
+    this.elements.timelineScroll.scrollLeft = target;
+  },
+
+  setTimelineScale(scale) {
+    if (!scale || scale === this.timeline.scale) return;
+
+    const centerDate = this.dateFromX(
+      this.elements.timelineScroll.scrollLeft + this.elements.timelineScroll.clientWidth / 2
+    );
+
+    this.timeline.scale = scale;
+    document.querySelectorAll('.scale-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.scale === scale);
+    });
+
+    const half = Math.floor(this.timeline.periodCount / 2);
+    this.timeline.anchorStart = this.startOfPeriod(
+      this.addPeriods(centerDate, -half, this.timeline.scale),
+      this.timeline.scale
+    );
+
+    this.updateTimelineCanvas();
+    this.centerTimeline();
+    this.renderTimeline();
+  },
+
+  handleTimelineScroll() {
+    if (this.timeline.adjusting) return;
+    const totalWidth = this.timeline.periodCount * this.timeline.periodWidth[this.timeline.scale];
+    const scrollLeft = this.elements.timelineScroll.scrollLeft;
+    const threshold = totalWidth * 0.2;
+    const shiftPeriods = Math.floor(this.timeline.periodCount / 3);
+    const shiftWidth = shiftPeriods * this.timeline.periodWidth[this.timeline.scale];
+
+    if (scrollLeft < threshold) {
+      this.timeline.adjusting = true;
+      this.timeline.anchorStart = this.addPeriods(this.timeline.anchorStart, -shiftPeriods, this.timeline.scale);
+      this.elements.timelineScroll.scrollLeft = scrollLeft + shiftWidth;
+      this.timeline.adjusting = false;
+      this.renderTimeline();
+      return;
+    }
+
+    if (scrollLeft > totalWidth - threshold) {
+      this.timeline.adjusting = true;
+      this.timeline.anchorStart = this.addPeriods(this.timeline.anchorStart, shiftPeriods, this.timeline.scale);
+      this.elements.timelineScroll.scrollLeft = scrollLeft - shiftWidth;
+      this.timeline.adjusting = false;
+      this.renderTimeline();
+      return;
+    }
+
+    this.updateTimelineRange();
+  },
+
+  updateTimelineRange() {
+    const start = this.dateFromX(this.elements.timelineScroll.scrollLeft);
+    const end = this.dateFromX(this.elements.timelineScroll.scrollLeft + this.elements.timelineScroll.clientWidth);
+    this.elements.timelineRange.textContent = `${this.formatRangeDate(start)} — ${this.formatRangeDate(end)}`;
+  },
+
+  formatRangeDate(date) {
+    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+  },
+
+  renderTimeline() {
+    if (!this.timeline.initialized) return;
+    this.updateTimelineCanvas();
+    this.renderTimelineGrid();
+    this.renderTimelineRows();
+    this.updateTimelineRange();
+  },
+
+  renderTimelineGrid() {
+    const grid = this.elements.timelineGrid;
+    grid.innerHTML = '';
+
+    const scale = this.timeline.scale;
+    const periodWidth = this.timeline.periodWidth[scale];
+    const periods = this.timeline.periodCount;
+
+    for (let i = 0; i <= periods; i += 1) {
+      const x = i * periodWidth;
+      const line = document.createElement('div');
+      line.className = 'timeline-line';
+      line.style.left = `${x}px`;
+      grid.appendChild(line);
+
+      if (i < periods) {
+        const label = document.createElement('div');
+        label.className = 'timeline-label';
+        const date = this.addPeriods(this.timeline.anchorStart, i, scale);
+        label.textContent = this.formatPeriodLabel(date, scale);
+        label.style.left = `${x + 4}px`;
+        grid.appendChild(label);
+      }
+    }
+  },
+
+  formatPeriodLabel(date, scale) {
+    if (scale === 'daily') {
+      return date.toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
+    }
+    if (scale === 'weekly') {
+      return `Wk ${date.toLocaleDateString(undefined, { month: 'short', day: '2-digit' })}`;
+    }
+    return date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  },
+
+  renderTimelineRows() {
+    const rows = this.elements.timelineRows;
+    rows.innerHTML = '';
+
+    const width = this.timeline.periodCount * this.timeline.periodWidth[this.timeline.scale];
+    const rangeStart = this.timeline.anchorStart;
+    const rangeEnd = this.addPeriods(rangeStart, this.timeline.periodCount, this.timeline.scale);
+    const users = this.collectUsers();
+
+    users.forEach(user => {
+      const row = document.createElement('div');
+      row.className = 'timeline-row';
+
+      const userCell = document.createElement('a');
+      userCell.className = 'timeline-user';
+      userCell.href = `https://github.com/${user.username}`;
+      userCell.target = '_blank';
+      userCell.rel = 'noopener';
+      userCell.title = user.username;
+
+      const avatar = document.createElement('img');
+      avatar.src = `https://github.com/${user.username}.png`;
+      avatar.alt = user.username;
+      userCell.appendChild(avatar);
+
+      const track = document.createElement('div');
+      track.className = 'timeline-track';
+      track.style.width = `${width}px`;
+
+      user.logs.forEach(log => {
+        if (!log.dateObj) return;
+        if (log.dateObj < rangeStart || log.dateObj > rangeEnd) return;
+        const x = this.timeToX(log.dateObj);
+        const durationMs = this.parseDuration(log.duration) || this.intervalMs;
+        const barWidth = Math.max(4, this.durationToWidth(log.dateObj, durationMs));
+
+        const bar = document.createElement('div');
+        bar.className = 'timeline-bar';
+        bar.style.left = `${x}px`;
+        bar.style.width = `${barWidth}px`;
+
+        bar.addEventListener('mouseenter', (event) => this.showTimelineTooltip(event, log));
+        bar.addEventListener('mouseleave', () => this.hideTimelineTooltip());
+
+        track.appendChild(bar);
+      });
+
+      row.appendChild(userCell);
+      row.appendChild(track);
+      rows.appendChild(row);
+    });
+  },
+
+  collectUsers() {
+    const byUser = new Map();
+
+    for (const log of this.logsByPath.values()) {
+      if (!log.username) continue;
+      const dateObj = this.buildDate(log.date, log.time);
+      if (!dateObj) continue;
+      const entry = byUser.get(log.username) || [];
+      entry.push({ ...log, dateObj });
+      byUser.set(log.username, entry);
+    }
+
+    return Array.from(byUser.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([username, logs]) => ({
+        username,
+        logs: logs.sort((a, b) => a.dateObj - b.dateObj)
+      }));
+  },
+
+  buildDate(dateStr, timeStr) {
+    if (!dateStr || !timeStr) return null;
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const [hour, minute, second] = timeStr.split(':').map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day, hour || 0, minute || 0, second || 0);
+  },
+
+  parseDuration(duration) {
+    if (!duration) return 0;
+    const match = duration.match(/(\d{2})m(\d{2})s/);
+    if (!match) return 0;
+    const minutes = Number(match[1]);
+    const seconds = Number(match[2]);
+    return (minutes * 60 + seconds) * 1000;
+  },
+
+  durationToWidth(startDate, durationMs) {
+    const scale = this.timeline.scale;
+    const periodWidth = this.timeline.periodWidth[scale];
+
+    if (scale === 'daily') {
+      return (durationMs / (24 * 60 * 60 * 1000)) * periodWidth;
+    }
+
+    if (scale === 'weekly') {
+      return (durationMs / (7 * 24 * 60 * 60 * 1000)) * periodWidth;
+    }
+
+    const daysInMonth = this.daysInMonth(startDate);
+    return (durationMs / (daysInMonth * 24 * 60 * 60 * 1000)) * periodWidth;
+  },
+
+  timeToX(date) {
+    const scale = this.timeline.scale;
+    const periodWidth = this.timeline.periodWidth[scale];
+    const anchor = this.timeline.anchorStart;
+
+    if (scale === 'daily') {
+      return ((date - anchor) / (24 * 60 * 60 * 1000)) * periodWidth;
+    }
+
+    if (scale === 'weekly') {
+      return ((date - anchor) / (7 * 24 * 60 * 60 * 1000)) * periodWidth;
+    }
+
+    const monthsDiff = this.monthDiff(anchor, date);
+    const baseMonth = this.addMonths(anchor, monthsDiff);
+    const daysInMonth = this.daysInMonth(baseMonth);
+    const offset = (date - baseMonth) / (daysInMonth * 24 * 60 * 60 * 1000);
+    return monthsDiff * periodWidth + offset * periodWidth;
+  },
+
+  dateFromX(x) {
+    const scale = this.timeline.scale;
+    const periodWidth = this.timeline.periodWidth[scale];
+    const anchor = this.timeline.anchorStart;
+
+    if (scale === 'daily') {
+      const ms = (x / periodWidth) * (24 * 60 * 60 * 1000);
+      return new Date(anchor.getTime() + ms);
+    }
+
+    if (scale === 'weekly') {
+      const ms = (x / periodWidth) * (7 * 24 * 60 * 60 * 1000);
+      return new Date(anchor.getTime() + ms);
+    }
+
+    const monthsDiff = Math.floor(x / periodWidth);
+    const offset = x - monthsDiff * periodWidth;
+    const baseMonth = this.addMonths(anchor, monthsDiff);
+    const daysInMonth = this.daysInMonth(baseMonth);
+    const ms = (offset / periodWidth) * (daysInMonth * 24 * 60 * 60 * 1000);
+    return new Date(baseMonth.getTime() + ms);
+  },
+
+  startOfPeriod(date, scale) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+
+    if (scale === 'weekly') {
+      const day = d.getDay();
+      const diff = (day === 0 ? -6 : 1) - day;
+      d.setDate(d.getDate() + diff);
+    }
+
+    if (scale === 'monthly') {
+      d.setDate(1);
+    }
+
+    return d;
+  },
+
+  addPeriods(date, count, scale) {
+    if (scale === 'daily') return this.addDays(date, count);
+    if (scale === 'weekly') return this.addDays(date, count * 7);
+    return this.addMonths(date, count);
+  },
+
+  addDays(date, days) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return d;
+  },
+
+  addMonths(date, months) {
+    const d = new Date(date);
+    const day = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + months);
+    const max = this.daysInMonth(d);
+    d.setDate(Math.min(day, max));
+    return d;
+  },
+
+  daysInMonth(date) {
+    const d = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    return d.getDate();
+  },
+
+  monthDiff(start, end) {
+    return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+  },
+
+  showTimelineTooltip(event, log) {
+    const tooltip = this.elements.timelineTooltip;
+    const duration = log.duration || this.formatDuration(this.parseDuration(log.duration) || this.intervalMs);
+    tooltip.textContent = `${log.date} ${log.time}\n${duration}\n@${log.username}\n${log.text}`;
+    tooltip.classList.remove('hidden');
+
+    const padding = 12;
+    const x = Math.min(window.innerWidth - tooltip.offsetWidth - padding, event.clientX + padding);
+    const y = Math.min(window.innerHeight - tooltip.offsetHeight - padding, event.clientY + padding);
+    tooltip.style.left = `${x}px`;
+    tooltip.style.top = `${y}px`;
+  },
+
+  hideTimelineTooltip() {
+    this.elements.timelineTooltip.classList.add('hidden');
+  },
+
   renderLogs() {
     const paths = Array.from(this.logsByPath.keys()).sort();
     this.elements.logList.innerHTML = '';
@@ -739,6 +1135,7 @@ const App = {
 
     this.updateLogUI();
     this.scrollToBottom();
+    this.renderTimeline();
   },
 
   updateLogUI() {

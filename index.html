@@ -94,15 +94,36 @@
       <main class="main">
         <div class="log-shell">
           <div class="log-header">
-            <div>
-              <h2>Logs</h2>
+            <h2 id="view-title">Logs</h2>
+            <div class="tab-bar">
+              <button id="tab-logs" class="tab-btn active">Logs</button>
+              <button id="tab-timeline" class="tab-btn">Timeline</button>
             </div>
           </div>
 
-          <div id="log-container" class="log-container">
-            <div id="log-loading" class="log-loading">Loading logs...</div>
-            <div id="log-list" class="log-list"></div>
-            <div id="log-empty" class="log-empty hidden">No logs yet.</div>
+          <div id="logs-view" class="logs-view">
+            <div id="log-container" class="log-container">
+              <div id="log-loading" class="log-loading">Loading logs...</div>
+              <div id="log-list" class="log-list"></div>
+              <div id="log-empty" class="log-empty hidden">No logs yet.</div>
+            </div>
+          </div>
+
+          <div id="timeline-view" class="timeline-view hidden">
+            <div class="timeline-controls">
+              <div id="timeline-range" class="timeline-range"></div>
+              <div class="timeline-scales">
+                <button class="scale-btn active" data-scale="daily">Daily</button>
+                <button class="scale-btn" data-scale="weekly">Weekly</button>
+                <button class="scale-btn" data-scale="monthly">Monthly</button>
+              </div>
+            </div>
+            <div id="timeline-scroll" class="timeline-scroll">
+              <div id="timeline-canvas" class="timeline-canvas">
+                <div id="timeline-grid" class="timeline-grid"></div>
+                <div id="timeline-rows" class="timeline-rows"></div>
+              </div>
+            </div>
           </div>
         </div>
       </main>
@@ -140,6 +161,7 @@
   </div>
 
   <div id="toast-container" class="toast-container"></div>
+  <div id="timeline-tooltip" class="timeline-tooltip hidden"></div>
 
   <script src="js/github.js"></script>
   <script src="js/app.js"></script>
