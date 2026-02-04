@@ -540,14 +540,12 @@ const App = {
       const item = document.createElement('div');
       item.className = 'log-item';
 
-      const line = document.createElement('div');
-      line.className = 'log-line';
-      const cleanText = log.text.replace(/\s+/g, ' ').trim();
-      line.innerHTML = '';
-      line.appendChild(document.createTextNode(`${log.date} ${log.time} `));
+      const meta = document.createElement('div');
+      meta.className = 'log-meta';
+      meta.appendChild(document.createTextNode(`${log.date} ${log.time} `));
 
       if (log.duration) {
-        line.appendChild(document.createTextNode(`${log.duration} `));
+        meta.appendChild(document.createTextNode(`${log.duration} `));
       }
 
       const userLink = document.createElement('a');
@@ -556,11 +554,14 @@ const App = {
       userLink.target = '_blank';
       userLink.rel = 'noopener';
       userLink.className = 'log-user-link';
-      line.appendChild(userLink);
+      meta.appendChild(userLink);
 
-      line.appendChild(document.createTextNode(` — ${cleanText}`));
+      const message = document.createElement('div');
+      message.className = 'log-message';
+      message.textContent = log.text;
 
-      item.appendChild(line);
+      item.appendChild(meta);
+      item.appendChild(message);
       this.elements.logList.appendChild(item);
     }
 
