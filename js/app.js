@@ -618,7 +618,7 @@ const App = {
     const username = parts.length >= 5 ? parts[3] : parts[2];
     const match = timeRaw.match(/(\d{2})h(\d{2})m(\d{2})s/);
     const time = match ? `${match[1]}:${match[2]}:${match[3]}` : timeRaw;
-    const durationMatch = durationRaw ? durationRaw.match(/(\d{2})m(\d{2})s/) : null;
+    const durationMatch = durationRaw ? durationRaw.match(/(\d{2,3})m(\d{2})s/) : null;
     const duration = durationMatch ? durationRaw : null;
 
     return { date, time, duration, username };
@@ -968,7 +968,7 @@ const App = {
 
   parseDuration(duration) {
     if (!duration) return 0;
-    const match = duration.match(/(\d{2})m(\d{2})s/);
+    const match = duration.match(/(\d{2,3})m(\d{2})s/);
     if (!match) return 0;
     const minutes = Number(match[1]);
     const seconds = Number(match[2]);
