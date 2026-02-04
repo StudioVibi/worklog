@@ -218,7 +218,7 @@ const App = {
 
   updateCounter() {
     const displayMs = this.isAwaitingLog ? 60 * 60 * 1000 : this.elapsedMs;
-    this.elements.counter.textContent = `Pending: ${this.formatDuration(displayMs)}`;
+    this.elements.counter.textContent = `Worked: ${this.formatDuration(displayMs)}`;
   },
 
   togglePause() {
