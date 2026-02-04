@@ -37,8 +37,7 @@ const App = {
     bufferScreens: 4,
     anchorStart: null,
     initialized: false,
-    adjusting: false,
-    hasCentered: false
+    adjusting: false
   },
 
   init() {
@@ -349,13 +348,9 @@ const App = {
     this.elements.tabLogs.classList.remove('active');
     this.elements.tabTimeline.classList.add('active');
     requestAnimationFrame(() => {
-      if (!this.timeline.hasCentered) {
-        this.ensureTimelineSized(new Date());
-        this.centerTimelineOnDate(new Date());
-        this.timeline.hasCentered = true;
-      } else {
-        this.ensureTimelineSized();
-      }
+      const today = new Date();
+      this.ensureTimelineSized(today, 'left');
+      this.positionTimelineOnDate(today, 'left');
       this.renderTimeline();
     });
   },
@@ -764,7 +759,7 @@ const App = {
     this.timeline.initialized = true;
   },
 
-  ensureTimelineSized(centerDate = null) {
+  ensureTimelineSized(anchorDate = null, align = 'center') {
     const viewWidth = this.elements.timelineScroll.clientWidth;
     if (!viewWidth) return false;
 
@@ -777,11 +772,11 @@ const App = {
     this.elements.timelineCanvas.style.width = `${totalWidth}px`;
     this.elements.timelineLabels.style.width = `${totalWidth}px`;
 
-    if (!this.timeline.anchorStart || centerDate) {
-      const base = centerDate || new Date();
-      const half = Math.floor(periodCount / 2);
+    if (!this.timeline.anchorStart || anchorDate) {
+      const base = anchorDate || new Date();
+      const offset = align === 'left' ? Math.floor(periodCount / 3) : Math.floor(periodCount / 2);
       this.timeline.anchorStart = this.startOfPeriod(
-        this.addPeriods(base, -half, this.timeline.scale),
+        this.addPeriods(base, -offset, this.timeline.scale),
         this.timeline.scale
       );
     }
@@ -789,22 +784,20 @@ const App = {
     return true;
   },
 
-  centerTimelineOnDate(date) {
+  positionTimelineOnDate(date, align = 'center') {
     const viewWidth = this.elements.timelineScroll.clientWidth;
     if (!viewWidth) return;
     const totalWidth = this.timeline.periodCount * this.timeline.periodWidth[this.timeline.scale];
     const x = this.timeToX(date);
     const maxScroll = Math.max(0, totalWidth - viewWidth);
-    const target = Math.min(Math.max(0, x - viewWidth / 2), maxScroll);
+    const offset = align === 'left' ? 0 : viewWidth / 2;
+    const target = Math.min(Math.max(0, x - offset), maxScroll);
     this.elements.timelineScroll.scrollLeft = target;
   },
 
   setTimelineScale(scale) {
     if (!scale || scale === this.timeline.scale) return;
-
-    const centerDate = this.dateFromX(
-      this.elements.timelineScroll.scrollLeft + this.elements.timelineScroll.clientWidth / 2
-    );
+    const today = new Date();
 
     this.timeline.scale = scale;
     document.querySelectorAll('.scale-btn').forEach(btn => {
@@ -812,8 +805,8 @@ const App = {
     });
 
     this.timeline.anchorStart = null;
-    this.ensureTimelineSized(centerDate);
-    this.centerTimelineOnDate(centerDate);
+    this.ensureTimelineSized(today, 'left');
+    this.positionTimelineOnDate(today, 'left');
     this.renderTimeline();
   },
 
@@ -881,13 +874,24 @@ const App = {
   },
 
   formatPeriodLabel(date, scale) {
+    const fmt = (withDay) => {
+      const options = withDay
+        ? { year: 'numeric', month: 'short', day: '2-digit' }
+        : { year: 'numeric', month: 'short' };
+      const parts = new Intl.DateTimeFormat('en', options).formatToParts(date);
+      const year = parts.find(p => p.type === 'year')?.value || '';
+      const month = parts.find(p => p.type === 'month')?.value || '';
+      const day = parts.find(p => p.type === 'day')?.value || '';
+      return withDay ? `${year} ${month} ${day}`.trim() : `${year} ${month}`.trim();
+    };
+
     if (scale === 'daily') {
-      return date.toLocaleDateString(undefined, { month: 'short', day: '2-digit' });
+      return fmt(true);
     }
     if (scale === 'weekly') {
-      return `Wk ${date.toLocaleDateString(undefined, { month: 'short', day: '2-digit' })}`;
+      return `Wk ${fmt(true)}`;
     }
-    return date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+    return fmt(false);
   },
 
   renderTimelineRows() {
