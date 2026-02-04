@@ -319,9 +319,6 @@ button.danger {
 }
 
 .log-item {
-  display: grid;
-  grid-template-columns: 140px 110px 1fr;
-  gap: 12px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--line-soft);
   font-size: 0.85rem;
@@ -332,17 +329,11 @@ button.danger {
   background: #f5f5f5;
 }
 
-.log-date {
-  color: var(--muted);
-}
-
-.log-user {
-  color: var(--muted);
-}
-
-.log-text {
+.log-line {
   color: var(--ink);
-  white-space: pre-wrap;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .log-loading,
@@ -431,7 +422,6 @@ button.danger {
 
 @media (max-width: 820px) {
   .log-item {
-    grid-template-columns: 1fr;
-    gap: 6px;
+    font-size: 0.8rem;
   }
 }

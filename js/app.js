@@ -409,21 +409,12 @@ const App = {
       const item = document.createElement('div');
       item.className = 'log-item';
 
-      const date = document.createElement('div');
-      date.className = 'log-date';
-      date.textContent = `${log.date} ${log.time}`;
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      const cleanText = log.text.replace(/\s+/g, ' ').trim();
+      line.textContent = `${log.date} ${log.time} @${log.username} — ${cleanText}`;
 
-      const user = document.createElement('div');
-      user.className = 'log-user';
-      user.textContent = `@${log.username}`;
-
-      const text = document.createElement('div');
-      text.className = 'log-text';
-      text.textContent = log.text;
-
-      item.appendChild(date);
-      item.appendChild(user);
-      item.appendChild(text);
+      item.appendChild(line);
       this.elements.logList.appendChild(item);
     }
 
