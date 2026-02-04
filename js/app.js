@@ -779,7 +779,23 @@ const App = {
   centerTimeline() {
     const totalWidth = this.timeline.periodCount * this.timeline.periodWidth[this.timeline.scale];
     const viewWidth = this.elements.timelineScroll.clientWidth;
-    const target = Math.max(0, (totalWidth - viewWidth) / 2);
+    if (viewWidth <= 0) return;
+
+    const targetDate = new Date();
+    let x = this.timeToX(targetDate);
+
+    if (x < 0 || x > totalWidth) {
+      const half = Math.floor(this.timeline.periodCount / 2);
+      this.timeline.anchorStart = this.startOfPeriod(
+        this.addPeriods(targetDate, -half, this.timeline.scale),
+        this.timeline.scale
+      );
+      this.updateTimelineCanvas();
+      x = this.timeToX(targetDate);
+    }
+
+    const maxScroll = Math.max(0, totalWidth - viewWidth);
+    const target = Math.min(Math.max(0, x - viewWidth / 2), maxScroll);
     this.elements.timelineScroll.scrollLeft = target;
   },
 
