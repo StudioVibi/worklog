@@ -262,13 +262,14 @@ button.danger {
 }
 
 .interval-control input {
-  width: 3ch;
+  width: 4.5ch;
   padding: 2px 4px;
   font-size: 0.75rem;
   border: 1px solid var(--line-soft);
   background: #fff;
   appearance: textfield;
   -moz-appearance: textfield;
+  text-align: center;
 }
 
 .interval-control input::-webkit-outer-spin-button,
