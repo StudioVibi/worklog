@@ -101,6 +101,13 @@ const App = {
       }
     });
 
+    document.addEventListener('keydown', (event) => {
+      if (event.key === '?' && !this.isTyping(event)) {
+        event.preventDefault();
+        this.toggleIntervalVisibility();
+      }
+    });
+
     document.querySelectorAll('[data-close]').forEach(btn => {
       btn.addEventListener('click', () => this.hideModal(this.elements.helpModal));
     });
@@ -118,6 +125,13 @@ const App = {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
     }
+  },
+
+  isTyping(event) {
+    const target = event.target;
+    if (!target) return false;
+    const tag = target.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable;
   },
 
   setupAudioUnlock() {
@@ -266,6 +280,12 @@ const App = {
     } else {
       this.updateCounter();
     }
+  },
+
+  toggleIntervalVisibility() {
+    const control = this.elements.intervalInput?.closest('.interval-control');
+    if (!control) return;
+    control.classList.toggle('hidden');
   },
 
   showLoginScreen() {

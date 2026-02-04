@@ -278,6 +278,10 @@ button.danger {
   margin: 0;
 }
 
+.interval-control.hidden {
+  display: none;
+}
+
 .icon-btn {
   width: 32px;
   height: 32px;
