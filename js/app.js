@@ -45,6 +45,7 @@ const App = {
       pauseBtn: document.getElementById('pause-btn'),
       helpBtn: document.getElementById('help-btn'),
       counter: document.getElementById('counter'),
+      userPill: document.getElementById('user-pill'),
       userAvatar: document.getElementById('user-avatar'),
       userName: document.getElementById('user-name'),
       logContainer: document.getElementById('log-container'),
@@ -66,6 +67,7 @@ const App = {
     this.elements.pauseBtn.addEventListener('click', () => this.togglePause());
     this.elements.helpBtn.addEventListener('click', () => this.showHelp());
     this.elements.counter.addEventListener('click', () => this.triggerManualLog());
+    this.elements.userPill.addEventListener('click', () => this.openProfile());
     this.elements.registerLog.addEventListener('click', () => this.submitLog());
     this.elements.cancelLog.addEventListener('click', () => this.cancelLog());
 
@@ -137,6 +139,11 @@ const App = {
     this.startTimer();
     await this.loadLogs();
     this.startPolling();
+  },
+
+  openProfile() {
+    if (!this.user) return;
+    window.open(`https://github.com/${this.user.login}`, '_blank');
   },
 
   async login() {

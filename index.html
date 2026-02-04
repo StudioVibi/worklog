@@ -70,6 +70,10 @@
               <rect x="14" y="5" width="4" height="14" fill="currentColor"></rect>
             </svg>
           </button>
+          <button id="user-pill" class="user-pill user-pill-button" title="Open GitHub profile" aria-label="Open GitHub profile">
+            <img id="user-avatar" alt="" />
+            <span id="user-name">@user</span>
+          </button>
           <button id="logout-btn" class="icon-btn" title="Log out" aria-label="Log out">
             <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M9 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9"></path>
@@ -78,10 +82,6 @@
             </svg>
           </button>
           <button id="help-btn" class="icon-btn help-btn" title="About Worklog" aria-label="About Worklog">?</button>
-          <div class="user-pill">
-            <img id="user-avatar" alt="" />
-            <span id="user-name">@user</span>
-          </div>
         </div>
       </header>
 
@@ -106,15 +106,13 @@
   <div id="log-modal" class="modal hidden" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-header">
-        <h2>What did you do in the last hour?</h2>
-        <p>Keep it short — 1 or 2 words is enough.</p>
+        <h2>What you're working on?</h2>
       </div>
-      <textarea id="log-text" rows="4" placeholder="e.g. auth debug"></textarea>
+      <textarea id="log-text" rows="4" placeholder="e.g. debugging race condition on HVM's collapser.c"></textarea>
       <div class="modal-actions">
         <button id="cancel-log" class="danger">Cancel</button>
         <button id="register-log" class="primary">Send</button>
       </div>
-      <div class="modal-hint">Ctrl+Enter / Cmd+Enter to send</div>
     </div>
   </div>
 
@@ -125,7 +123,7 @@
       </div>
       <div class="help-text">
         <p><strong>Worklog</strong> is a lightweight activity log used for visibility, billing, and historical context. When you choose to work, keep this tab open.</p>
-        <p>Every full 60-minute interval (counting from when you opened this tab), you will hear a beep and a modal will ask for a short description of what you did. Press <strong>Send</strong> (or Ctrl/Cmd+Enter) to save it. If you forgot the tab open, press <strong>Cancel</strong> to discard that hour.</p>
+        <p>Every full 60-minute interval (counting from when you opened this tab), you will hear a beep and a modal will ask for a short note on what you worked on in the last hour (or what you are working on right now). Press <strong>Send</strong> to save it. If you forgot the tab open, press <strong>Cancel</strong> to discard that hour.</p>
         <p>You can pause/resume at any time. Closing the tab ends the session.</p>
         <p>This is <strong>not</strong> a time clock. There are no mandatory schedules, minimum hours, or penalties. It is a voluntary log for freelancers/PJ billing and transparency, not a requirement to be online at specific times.</p>
       </div>

@@ -49,6 +49,12 @@ p {
   padding: 24px;
 }
 
+#main-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
 .hidden {
   display: none !important;
 }
@@ -249,13 +255,16 @@ button.danger {
 
 .main {
   padding: 0;
+  flex: 1;
+  display: flex;
 }
 
 .log-shell {
   background: var(--panel);
   border: 1px solid var(--line);
   padding: 0;
-  min-height: calc(100vh - 120px);
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -277,6 +286,7 @@ button.danger {
   border: 1px solid var(--line-soft);
   padding: 4px 8px;
   font-size: 0.8rem;
+  background: #fff;
 }
 
 .user-pill img {
@@ -286,12 +296,20 @@ button.danger {
   border: 1px solid var(--line-soft);
 }
 
+.user-pill-button {
+  cursor: pointer;
+}
+
+.user-pill-button:hover {
+  background: #f3f4f6;
+}
+
 .log-container {
   flex: 1;
   border: 1px solid var(--line-soft);
   background: #fafafa;
   overflow-y: auto;
-  min-height: 320px;
+  min-height: 0;
   position: relative;
 }
 
