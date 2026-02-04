@@ -7,6 +7,7 @@ const App = {
   isPaused: false,
   isAwaitingLog: false,
   elapsedMs: 0,
+  pendingMs: 0,
   lastTick: null,
   timerInterval: null,
   pollInterval: null,
@@ -183,6 +184,7 @@ const App = {
   startTimer() {
     this.stopTimers();
     this.elapsedMs = 0;
+    this.pendingMs = 0;
     this.lastTick = Date.now();
     this.isPaused = false;
     this.isAwaitingLog = false;
@@ -210,14 +212,14 @@ const App = {
 
     if (this.elapsedMs >= 60 * 60 * 1000 && !this.isAwaitingLog) {
       this.elapsedMs = 60 * 60 * 1000;
-      this.promptLog();
+      this.promptLog(60 * 60 * 1000);
     }
 
     this.updateCounter();
   },
 
   updateCounter() {
-    const displayMs = this.isAwaitingLog ? 60 * 60 * 1000 : this.elapsedMs;
+    const displayMs = this.isAwaitingLog ? this.pendingMs : this.elapsedMs;
     this.elements.counter.textContent = `Worked: ${this.formatDuration(displayMs)}`;
   },
 
@@ -249,7 +251,8 @@ const App = {
     modal.setAttribute('aria-hidden', 'true');
   },
 
-  promptLog() {
+  promptLog(durationMs) {
+    this.pendingMs = durationMs;
     this.isAwaitingLog = true;
     this.showModal(this.elements.logModal);
     this.playBeep();
@@ -258,13 +261,12 @@ const App = {
 
   triggerManualLog() {
     if (this.isAwaitingLog) return;
-    this.elapsedMs = 60 * 60 * 1000;
-    this.promptLog();
+    this.promptLog(this.elapsedMs);
     this.updateCounter();
   },
 
   cancelLog() {
-    const ok = window.confirm('Cancel this hour? It will not be logged.');
+    const ok = window.confirm('Cancel this hour? These minutes will NOT be logged, NOT counted as work hours, and NOT billable. If you actually worked, please fill the note and click Send.');
     if (!ok) return;
 
     this.resetAfterLog();
@@ -286,7 +288,7 @@ const App = {
 
     try {
       const now = new Date();
-      const filename = this.buildFilename(now, this.user.login);
+      const filename = this.buildFilename(now, this.user.login, this.pendingMs);
       const path = `logs/${filename}`;
 
       await GitHub.createLogFile(path, text);
@@ -307,6 +309,7 @@ const App = {
   resetAfterLog() {
     this.isAwaitingLog = false;
     this.elapsedMs = 0;
+    this.pendingMs = 0;
     this.lastTick = Date.now();
     this.updateCounter();
   },
@@ -318,7 +321,7 @@ const App = {
     return `${String(minutes).padStart(2, '0')}m${String(seconds).padStart(2, '0')}s`;
   },
 
-  buildFilename(date, username) {
+  buildFilename(date, username, durationMs) {
     const pad = (num) => String(num).padStart(2, '0');
     const year = date.getFullYear();
     const month = pad(date.getMonth() + 1);
@@ -326,8 +329,9 @@ const App = {
     const hour = pad(date.getHours());
     const minute = pad(date.getMinutes());
     const second = pad(date.getSeconds());
+    const duration = this.formatDuration(durationMs || 0);
 
-    return `${year}-${month}-${day}.${hour}h${minute}m${second}s.${username}.txt`;
+    return `${year}-${month}-${day}.${hour}h${minute}m${second}s.${duration}.${username}.txt`;
   },
 
   parseLogPath(path) {
@@ -338,11 +342,14 @@ const App = {
 
     const date = parts[0];
     const timeRaw = parts[1];
-    const username = parts[2];
+    const durationRaw = parts.length >= 5 ? parts[2] : null;
+    const username = parts.length >= 5 ? parts[3] : parts[2];
     const match = timeRaw.match(/(\d{2})h(\d{2})m(\d{2})s/);
     const time = match ? `${match[1]}:${match[2]}:${match[3]}` : timeRaw;
+    const durationMatch = durationRaw ? durationRaw.match(/(\d{2})m(\d{2})s/) : null;
+    const duration = durationMatch ? durationRaw : null;
 
-    return { date, time, username };
+    return { date, time, duration, username };
   },
 
   addLogLocal(path, text) {
@@ -414,6 +421,10 @@ const App = {
       const cleanText = log.text.replace(/\s+/g, ' ').trim();
       line.innerHTML = '';
       line.appendChild(document.createTextNode(`${log.date} ${log.time} `));
+
+      if (log.duration) {
+        line.appendChild(document.createTextNode(`${log.duration} `));
+      }
 
       const userLink = document.createElement('a');
       userLink.href = `https://github.com/${log.username}`;
