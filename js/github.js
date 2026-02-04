@@ -83,7 +83,7 @@ const GitHub = {
     return await this.api(`/repos/${this.owner}/${this.repo}/contents/${path}`, {
       method: 'PUT',
       body: JSON.stringify({
-        message: `Add worklog: ${path}`,
+        message: `worklog: ${path}`,
         content: encoded
       })
     });
