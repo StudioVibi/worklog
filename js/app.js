@@ -25,7 +25,8 @@ const App = {
     paused: 'worklog_paused',
     awaiting: 'worklog_awaiting',
     lastSeen: 'worklog_last_seen_sha',
-    interval: 'worklog_interval_minutes'
+    interval: 'worklog_interval_minutes',
+    pendingLogs: 'worklog_pending_logs'
   },
   lastSeenSha: null,
   intervalMs: 60 * 60 * 1000,
@@ -191,6 +192,65 @@ const App = {
     if (!sha) return;
     this.lastSeenSha = sha;
     localStorage.setItem(this.storage.lastSeen, sha);
+  },
+
+  loadPendingLogs() {
+    const raw = localStorage.getItem(this.storage.pendingLogs);
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (err) {
+      return {};
+    }
+  },
+
+  savePendingLogs(pending) {
+    localStorage.setItem(this.storage.pendingLogs, JSON.stringify(pending));
+  },
+
+  addPendingLog(path, text) {
+    const pending = this.loadPendingLogs();
+    pending[path] = { text, ts: Date.now() };
+    this.savePendingLogs(pending);
+  },
+
+  mergePendingLogs() {
+    const pending = this.loadPendingLogs();
+    let changed = false;
+    const now = Date.now();
+    const expiryMs = 2 * 60 * 60 * 1000;
+
+    for (const [path, entry] of Object.entries(pending)) {
+      if (this.logsByPath.has(path)) {
+        delete pending[path];
+        changed = true;
+        continue;
+      }
+
+      if (!entry || !entry.text || !entry.ts || now - entry.ts > expiryMs) {
+        delete pending[path];
+        changed = true;
+        continue;
+      }
+
+      const parsed = this.parseLogPath(path);
+      if (!parsed) {
+        delete pending[path];
+        changed = true;
+        continue;
+      }
+
+      this.logsByPath.set(path, {
+        path,
+        ...parsed,
+        text: entry.text
+      });
+    }
+
+    if (changed) {
+      this.savePendingLogs(pending);
+    }
   },
 
   updateInterval() {
@@ -384,6 +444,7 @@ const App = {
       const path = `logs/${filename}`;
 
       await GitHub.createLogFile(path, text);
+      this.addPendingLog(path, text);
       this.addLogLocal(path, text);
       this.toast('Log sent', 'success');
 
@@ -545,6 +606,7 @@ const App = {
     const entries = await GitHub.listLogTree();
     this.logsByPath.clear();
     await this.storeEntries(entries, { skipExisting: false });
+    this.mergePendingLogs();
     this.saveLastSeen(headSha);
     this.renderLogs();
   },
@@ -590,6 +652,7 @@ const App = {
     }
 
     await this.storeEntries(files, { skipExisting: true });
+    this.mergePendingLogs();
     this.saveLastSeen(headSha);
     this.renderLogs();
   },

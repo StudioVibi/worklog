@@ -244,6 +244,9 @@ button.danger {
   background: #f8f8f8;
   color: var(--muted);
   cursor: pointer;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .interval-control {
@@ -255,14 +258,23 @@ button.danger {
   border: 1px solid var(--line);
   background: #f8f8f8;
   padding: 4px 8px;
+  height: 32px;
 }
 
 .interval-control input {
-  width: 52px;
+  width: 3ch;
   padding: 2px 4px;
   font-size: 0.75rem;
   border: 1px solid var(--line-soft);
   background: #fff;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.interval-control input::-webkit-outer-spin-button,
+.interval-control input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .icon-btn {
