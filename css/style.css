@@ -336,6 +336,15 @@ button.danger {
   text-overflow: ellipsis;
 }
 
+.log-user-link {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.log-user-link:hover {
+  color: #111827;
+}
+
 .log-loading,
 .log-empty {
   position: absolute;

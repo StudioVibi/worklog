@@ -412,7 +412,18 @@ const App = {
       const line = document.createElement('div');
       line.className = 'log-line';
       const cleanText = log.text.replace(/\s+/g, ' ').trim();
-      line.textContent = `${log.date} ${log.time} @${log.username} — ${cleanText}`;
+      line.innerHTML = '';
+      line.appendChild(document.createTextNode(`${log.date} ${log.time} `));
+
+      const userLink = document.createElement('a');
+      userLink.href = `https://github.com/${log.username}`;
+      userLink.textContent = `@${log.username}`;
+      userLink.target = '_blank';
+      userLink.rel = 'noopener';
+      userLink.className = 'log-user-link';
+      line.appendChild(userLink);
+
+      line.appendChild(document.createTextNode(` — ${cleanText}`));
 
       item.appendChild(line);
       this.elements.logList.appendChild(item);
