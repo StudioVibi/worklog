@@ -19,16 +19,39 @@
           <p>Lightweight hourly logging for transparent, flexible work.</p>
         </div>
 
-        <label class="field">
-          <span>GitHub Personal Access Token</span>
-          <input id="pat-input" type="password" placeholder="github_pat_..." autocomplete="off" />
-        </label>
+        <div class="login-steps">
+          <div class="step">
+            <span class="step-number">1</span>
+            <div class="step-content">
+              <a href="https://github.com/settings/tokens/new?description=Worklog&scopes=repo" target="_blank" rel="noopener" class="link-button">Create token on GitHub</a>
+              <p class="step-hint">Opens GitHub with the required permissions selected.</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">2</span>
+            <div class="step-content">
+              <p class="step-hint">Click <strong>Generate token</strong> at the bottom of the page.</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">3</span>
+            <div class="step-content">
+              <p class="step-hint">Copy the token (starts with <code>ghp_</code> or <code>github_pat_</code>).</p>
+            </div>
+          </div>
+          <div class="step">
+            <span class="step-number">4</span>
+            <div class="step-content">
+              <input id="pat-input" type="password" placeholder="Paste the token here" autocomplete="off" />
+            </div>
+          </div>
+        </div>
 
         <button id="login-btn" class="primary">Sign in</button>
 
         <div class="login-notes">
-          <p>Token needs access to the private repo <strong>StudioVibi/worklogs</strong>.</p>
-          <p>Recommended scopes: <strong>repo</strong> (classic) or repository read/write permissions.</p>
+          <p>The token is stored locally in your browser. You only need to do this once.</p>
+          <p>Access needed: private repo <strong>StudioVibi/worklogs</strong>.</p>
         </div>
       </div>
     </section>
