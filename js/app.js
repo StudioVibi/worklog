@@ -45,7 +45,6 @@ const App = {
       pauseBtn: document.getElementById('pause-btn'),
       helpBtn: document.getElementById('help-btn'),
       counter: document.getElementById('counter'),
-      sessionStatus: document.getElementById('session-status'),
       userAvatar: document.getElementById('user-avatar'),
       userName: document.getElementById('user-name'),
       logContainer: document.getElementById('log-container'),
@@ -66,6 +65,7 @@ const App = {
     this.elements.logoutBtn.addEventListener('click', () => this.logout());
     this.elements.pauseBtn.addEventListener('click', () => this.togglePause());
     this.elements.helpBtn.addEventListener('click', () => this.showHelp());
+    this.elements.counter.addEventListener('click', () => this.triggerManualLog());
     this.elements.registerLog.addEventListener('click', () => this.submitLog());
     this.elements.cancelLog.addEventListener('click', () => this.cancelLog());
 
@@ -180,7 +180,6 @@ const App = {
     this.isPaused = false;
     this.isAwaitingLog = false;
     this.setPauseButton(false);
-    this.updateStatus();
     this.updateCounter();
 
     this.timerInterval = setInterval(() => this.tick(), 1000);
@@ -211,35 +210,8 @@ const App = {
   },
 
   updateCounter() {
-    if (this.isPaused) {
-      this.elements.counter.textContent = 'Pending: paused';
-      this.updateStatus();
-      return;
-    }
-
-    if (this.isAwaitingLog) {
-      this.elements.counter.textContent = 'Pending: 60m';
-      this.updateStatus();
-      return;
-    }
-
-    const minutes = Math.min(60, Math.floor(this.elapsedMs / 60000));
-    this.elements.counter.textContent = `Pending: ${minutes}m`;
-    this.updateStatus();
-  },
-
-  updateStatus() {
-    if (this.isPaused) {
-      this.elements.sessionStatus.textContent = 'Paused';
-      return;
-    }
-
-    if (this.isAwaitingLog) {
-      this.elements.sessionStatus.textContent = 'Awaiting log';
-      return;
-    }
-
-    this.elements.sessionStatus.textContent = 'In session';
+    const displayMs = this.isAwaitingLog ? 60 * 60 * 1000 : this.elapsedMs;
+    this.elements.counter.textContent = `Pending: ${this.formatDuration(displayMs)}`;
   },
 
   togglePause() {
@@ -272,10 +244,16 @@ const App = {
 
   promptLog() {
     this.isAwaitingLog = true;
-    this.updateStatus();
     this.showModal(this.elements.logModal);
     this.playBeep();
     setTimeout(() => this.elements.logText.focus(), 100);
+  },
+
+  triggerManualLog() {
+    if (this.isAwaitingLog) return;
+    this.elapsedMs = 60 * 60 * 1000;
+    this.promptLog();
+    this.updateCounter();
   },
 
   cancelLog() {
@@ -306,16 +284,16 @@ const App = {
 
       await GitHub.createLogFile(path, text);
       this.addLogLocal(path, text);
-      this.toast('Log registered', 'success');
+      this.toast('Log sent', 'success');
 
       this.resetAfterLog();
       this.hideModal(this.elements.logModal);
     } catch (err) {
       console.error(err);
-      this.toast(`Failed to register: ${err.message}`, 'error');
+      this.toast(`Failed to send: ${err.message}`, 'error');
     } finally {
       this.elements.registerLog.disabled = false;
-      this.elements.registerLog.textContent = 'Register';
+      this.elements.registerLog.textContent = 'Send';
     }
   },
 
@@ -324,6 +302,13 @@ const App = {
     this.elapsedMs = 0;
     this.lastTick = Date.now();
     this.updateCounter();
+  },
+
+  formatDuration(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.min(60, Math.floor(totalSeconds / 60));
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}m${String(seconds).padStart(2, '0')}s`;
   },
 
   buildFilename(date, username) {

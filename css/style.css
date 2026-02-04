@@ -6,8 +6,8 @@
   --accent: #0f7a4a;
   --accent-dark: #0b5a36;
   --danger: #b42318;
-  --line: #111111;
-  --line-soft: #d1d5db;
+  --line: #a1a1aa;
+  --line-soft: #e5e7eb;
 }
 
 * {
@@ -56,7 +56,7 @@ p {
 .login-card {
   width: min(520px, 95vw);
   background: var(--panel);
-  border: 2px solid var(--line);
+  border: 1px solid var(--line);
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -191,7 +191,7 @@ button.danger {
   top: 0;
   z-index: 20;
   background: #fff;
-  border-bottom: 2px solid var(--line);
+  border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -209,11 +209,6 @@ button.danger {
   font-weight: 700;
 }
 
-.brand-status {
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
 .topbar-right {
   display: flex;
   align-items: center;
@@ -226,6 +221,7 @@ button.danger {
   border: 1px solid var(--line);
   background: #f8f8f8;
   color: var(--muted);
+  cursor: pointer;
 }
 
 .icon-btn {
@@ -257,26 +253,28 @@ button.danger {
 
 .log-shell {
   background: var(--panel);
-  border: 2px solid var(--line);
-  padding: 12px;
+  border: 1px solid var(--line);
+  padding: 0;
   min-height: calc(100vh - 120px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
 }
 
 .log-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: flex-start;
   gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .user-pill {
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-soft);
   padding: 4px 8px;
   font-size: 0.8rem;
 }
@@ -285,12 +283,12 @@ button.danger {
   width: 24px;
   height: 24px;
   border-radius: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-soft);
 }
 
 .log-container {
   flex: 1;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-soft);
   background: #fafafa;
   overflow-y: auto;
   min-height: 320px;
@@ -354,7 +352,7 @@ button.danger {
 .modal-card {
   width: min(560px, 96vw);
   background: var(--panel);
-  border: 2px solid var(--line);
+  border: 1px solid var(--line);
   padding: 16px;
   display: flex;
   flex-direction: column;
