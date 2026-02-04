@@ -3,6 +3,11 @@ const App = {
   elements: {},
   logsByPath: new Map(),
   isLoadingLogs: false,
+  renderedPaths: [],
+  renderedPathSet: new Set(),
+  logsVersion: 0,
+  lastSavedTimer: null,
+  lastCounterText: '',
 
   isPaused: false,
   isAwaitingLog: false,
@@ -19,11 +24,13 @@ const App = {
     pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" fill="currentColor"></rect><rect x="14" y="5" width="4" height="14" fill="currentColor"></rect></svg>',
     play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l10 7-10 7z" fill="currentColor"></path></svg>'
   },
+  months: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
   storage: {
     elapsed: 'worklog_elapsed_ms',
     pending: 'worklog_pending_ms',
     paused: 'worklog_paused',
     awaiting: 'worklog_awaiting',
+    timerState: 'worklog_timer_state',
     lastSeen: 'worklog_last_seen_sha',
     interval: 'worklog_interval_minutes',
     pendingLogs: 'worklog_pending_logs'
@@ -37,7 +44,10 @@ const App = {
     bufferScreens: 4,
     anchorStart: null,
     initialized: false,
-    adjusting: false
+    adjusting: false,
+    gridDirty: true,
+    rowsDirty: true,
+    renderScheduled: false
   },
 
   init() {
@@ -148,7 +158,11 @@ const App = {
     });
 
     window.addEventListener('beforeunload', () => this.saveTimerState());
-    window.addEventListener('resize', () => this.renderTimeline());
+    window.addEventListener('resize', () => {
+      if (this.isTimelineVisible()) {
+        this.scheduleTimelineRender({ grid: true, rows: true });
+      }
+    });
 
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
@@ -191,6 +205,27 @@ const App = {
   },
 
   loadTimerState() {
+    const packed = localStorage.getItem(this.storage.timerState);
+    if (packed) {
+      try {
+        const data = JSON.parse(packed);
+        if (data && typeof data === 'object') {
+          if (typeof data.elapsed === 'number' && data.elapsed >= 0) {
+            this.elapsedMs = data.elapsed;
+          }
+          if (typeof data.pending === 'number' && data.pending >= 0) {
+            this.pendingMs = data.pending;
+          }
+          this.isPaused = data.paused === true;
+          this.isAwaitingLog = data.awaiting === true && this.pendingMs > 0;
+          this.lastSavedTimer = { ...data };
+          return;
+        }
+      } catch (err) {
+        // fall back to legacy keys
+      }
+    }
+
     const elapsed = Number(localStorage.getItem(this.storage.elapsed));
     const pending = Number(localStorage.getItem(this.storage.pending));
     const paused = localStorage.getItem(this.storage.paused);
@@ -224,10 +259,26 @@ const App = {
   },
 
   saveTimerState() {
-    localStorage.setItem(this.storage.elapsed, String(Math.floor(this.elapsedMs)));
-    localStorage.setItem(this.storage.pending, String(Math.floor(this.pendingMs)));
-    localStorage.setItem(this.storage.paused, this.isPaused ? 'true' : 'false');
-    localStorage.setItem(this.storage.awaiting, this.isAwaitingLog ? 'true' : 'false');
+    const data = {
+      elapsed: Math.floor(this.elapsedMs),
+      pending: Math.floor(this.pendingMs),
+      paused: this.isPaused,
+      awaiting: this.isAwaitingLog
+    };
+
+    const last = this.lastSavedTimer;
+    if (
+      last &&
+      last.elapsed === data.elapsed &&
+      last.pending === data.pending &&
+      last.paused === data.paused &&
+      last.awaiting === data.awaiting
+    ) {
+      return;
+    }
+
+    this.lastSavedTimer = { ...data };
+    localStorage.setItem(this.storage.timerState, JSON.stringify(data));
   },
 
   saveLastSeen(sha) {
@@ -283,11 +334,8 @@ const App = {
         continue;
       }
 
-      this.logsByPath.set(path, {
-        path,
-        ...parsed,
-        text: entry.text
-      });
+      this.logsByPath.set(path, this.buildLogEntry(path, parsed, entry.text));
+      this.logsVersion += 1;
     }
 
     if (changed) {
@@ -351,8 +399,12 @@ const App = {
       const today = new Date();
       this.ensureTimelineSized(today, 'left');
       this.positionTimelineOnDate(today, 'left');
-      this.renderTimeline();
+      this.scheduleTimelineRender({ grid: true, rows: true });
     });
+  },
+
+  isTimelineVisible() {
+    return !this.elements.timelineView.classList.contains('hidden');
   },
 
   openProfile() {
@@ -391,6 +443,9 @@ const App = {
     GitHub.logout();
     this.logsByPath.clear();
     this.elements.logList.innerHTML = '';
+    this.renderedPaths = [];
+    this.renderedPathSet = new Set();
+    this.logsVersion = 0;
     this.showLoginScreen();
   },
 
@@ -437,7 +492,11 @@ const App = {
 
   updateCounter() {
     const displayMs = this.isAwaitingLog ? this.pendingMs : this.elapsedMs;
-    this.elements.counter.textContent = `Worked: ${this.formatDuration(displayMs)}`;
+    const text = `Worked: ${this.formatDuration(displayMs)}`;
+    if (text !== this.lastCounterText) {
+      this.elements.counter.textContent = text;
+      this.lastCounterText = text;
+    }
   },
 
   togglePause() {
@@ -632,13 +691,21 @@ const App = {
     const parsed = this.parseLogPath(path);
     if (!parsed) return;
 
-    this.logsByPath.set(path, {
-      path,
-      ...parsed,
-      text
-    });
+    this.logsByPath.set(path, this.buildLogEntry(path, parsed, text));
+    this.logsVersion += 1;
 
     this.renderLogs();
+  },
+
+  buildLogEntry(path, parsed, text) {
+    const dateObj = this.buildDate(parsed.date, parsed.time);
+    return {
+      path,
+      ...parsed,
+      dateObj,
+      durationMs: this.parseDuration(parsed.duration),
+      text
+    };
   },
 
   async loadLogs(forceFull = false) {
@@ -676,6 +743,8 @@ const App = {
   async loadAllLogs(headSha) {
     const entries = await GitHub.listLogTree();
     this.logsByPath.clear();
+    this.renderedPaths = [];
+    this.renderedPathSet = new Set();
     await this.storeEntries(entries, { skipExisting: false });
     this.mergePendingLogs();
     this.saveLastSeen(headSha);
@@ -738,6 +807,7 @@ const App = {
     }
 
     const batchSize = 10;
+    let added = 0;
     for (let i = 0; i < targets.length; i += batchSize) {
       const batch = targets.slice(i, i + batchSize);
       const contents = await Promise.all(batch.map(item => GitHub.getBlobContent(item.sha)));
@@ -745,18 +815,47 @@ const App = {
       batch.forEach((entry, index) => {
         const parsed = this.parseLogPath(entry.path);
         if (!parsed) return;
-        this.logsByPath.set(entry.path, {
-          path: entry.path,
-          ...parsed,
-          text: contents[index]
-        });
+        this.logsByPath.set(entry.path, this.buildLogEntry(entry.path, parsed, contents[index]));
+        added += 1;
       });
+    }
+
+    if (added > 0) {
+      this.logsVersion += added;
     }
   },
 
   initTimeline() {
     if (this.timeline.initialized) return;
     this.timeline.initialized = true;
+    this.timeline.gridDirty = true;
+    this.timeline.rowsDirty = true;
+  },
+
+  scheduleTimelineRender({ grid = false, rows = false } = {}) {
+    if (grid) this.timeline.gridDirty = true;
+    if (rows) this.timeline.rowsDirty = true;
+    if (!this.isTimelineVisible()) return;
+    if (this.timeline.renderScheduled) return;
+    this.timeline.renderScheduled = true;
+    requestAnimationFrame(() => {
+      this.timeline.renderScheduled = false;
+      this.renderTimelineNow();
+    });
+  },
+
+  renderTimelineNow() {
+    if (!this.timeline.initialized) return;
+    if (!this.isTimelineVisible()) return;
+    if (!this.ensureTimelineSized()) return;
+    if (this.timeline.gridDirty) {
+      this.renderTimelineGrid();
+      this.timeline.gridDirty = false;
+    }
+    if (this.timeline.rowsDirty) {
+      this.renderTimelineRows();
+      this.timeline.rowsDirty = false;
+    }
   },
 
   ensureTimelineSized(anchorDate = null, align = 'center') {
@@ -839,10 +938,7 @@ const App = {
   },
 
   renderTimeline() {
-    if (!this.timeline.initialized) return;
-    if (!this.ensureTimelineSized()) return;
-    this.renderTimelineGrid();
-    this.renderTimelineRows();
+    this.scheduleTimelineRender({ grid: true, rows: true });
   },
 
   renderTimelineGrid() {
@@ -854,13 +950,15 @@ const App = {
     const scale = this.timeline.scale;
     const periodWidth = this.timeline.periodWidth[scale];
     const periods = this.timeline.periodCount;
+    const gridFragment = document.createDocumentFragment();
+    const labelFragment = document.createDocumentFragment();
 
     for (let i = 0; i <= periods; i += 1) {
       const x = i * periodWidth;
       const line = document.createElement('div');
       line.className = 'timeline-line';
       line.style.left = `${x}px`;
-      grid.appendChild(line);
+      gridFragment.appendChild(line);
 
       if (i < periods) {
         const label = document.createElement('div');
@@ -868,30 +966,26 @@ const App = {
         const date = this.addPeriods(this.timeline.anchorStart, i, scale);
         label.textContent = this.formatPeriodLabel(date, scale);
         label.style.left = `${x + 4}px`;
-        labels.appendChild(label);
+        labelFragment.appendChild(label);
       }
     }
+
+    grid.appendChild(gridFragment);
+    labels.appendChild(labelFragment);
   },
 
   formatPeriodLabel(date, scale) {
-    const fmt = (withDay) => {
-      const options = withDay
-        ? { year: 'numeric', month: 'short', day: '2-digit' }
-        : { year: 'numeric', month: 'short' };
-      const parts = new Intl.DateTimeFormat('en', options).formatToParts(date);
-      const year = parts.find(p => p.type === 'year')?.value || '';
-      const month = parts.find(p => p.type === 'month')?.value || '';
-      const day = parts.find(p => p.type === 'day')?.value || '';
-      return withDay ? `${year} ${month} ${day}`.trim() : `${year} ${month}`.trim();
-    };
+    const year = date.getFullYear();
+    const month = this.months[date.getMonth()];
+    const day = String(date.getDate()).padStart(2, '0');
 
     if (scale === 'daily') {
-      return fmt(true);
+      return `${year} ${month} ${day}`;
     }
     if (scale === 'weekly') {
-      return `Wk ${fmt(true)}`;
+      return `Wk ${year} ${month} ${day}`;
     }
-    return fmt(false);
+    return `${year} ${month}`;
   },
 
   renderTimelineRows() {
@@ -902,6 +996,8 @@ const App = {
     const rangeStart = this.timeline.anchorStart;
     const rangeEnd = this.addPeriods(rangeStart, this.timeline.periodCount, this.timeline.scale);
     const users = this.collectUsers();
+
+    const fragment = document.createDocumentFragment();
 
     users.forEach(user => {
       const row = document.createElement('div');
@@ -927,7 +1023,7 @@ const App = {
         if (!log.dateObj) return;
         if (log.dateObj < rangeStart || log.dateObj > rangeEnd) return;
         const x = this.timeToX(log.dateObj);
-        const durationMs = this.parseDuration(log.duration) || this.intervalMs;
+        const durationMs = log.durationMs || this.intervalMs;
         const barWidth = Math.max(4, this.durationToWidth(log.dateObj, durationMs));
 
         const bar = document.createElement('div');
@@ -943,8 +1039,10 @@ const App = {
 
       row.appendChild(userCell);
       row.appendChild(track);
-      rows.appendChild(row);
+      fragment.appendChild(row);
     });
+
+    rows.appendChild(fragment);
   },
 
   collectUsers() {
@@ -952,10 +1050,13 @@ const App = {
 
     for (const log of this.logsByPath.values()) {
       if (!log.username) continue;
-      const dateObj = this.buildDate(log.date, log.time);
+      const dateObj = log.dateObj || this.buildDate(log.date, log.time);
       if (!dateObj) continue;
       const entry = byUser.get(log.username) || [];
-      entry.push({ ...log, dateObj });
+      if (!log.dateObj) {
+        log.dateObj = dateObj;
+      }
+      entry.push(log);
       byUser.set(log.username, entry);
     }
 
@@ -1093,7 +1194,7 @@ const App = {
 
   showTimelineTooltip(event, log) {
     const tooltip = this.elements.timelineTooltip;
-    const duration = log.duration || this.formatDuration(this.parseDuration(log.duration) || this.intervalMs);
+    const duration = log.duration || this.formatDuration(log.durationMs || this.intervalMs);
     tooltip.textContent = `${log.date} ${log.time}\n${duration}\n@${log.username}\n${log.text}`;
     tooltip.classList.remove('hidden');
 
@@ -1110,41 +1211,95 @@ const App = {
 
   renderLogs() {
     const paths = Array.from(this.logsByPath.keys()).sort();
-    this.elements.logList.innerHTML = '';
 
-    for (const path of paths) {
-      const log = this.logsByPath.get(path);
-      const item = document.createElement('div');
-      item.className = 'log-item';
-
-      const meta = document.createElement('div');
-      meta.className = 'log-meta';
-      meta.appendChild(document.createTextNode(`${log.date} ${log.time} `));
-
-      if (log.duration) {
-        meta.appendChild(document.createTextNode(`${log.duration} `));
-      }
-
-      const userLink = document.createElement('a');
-      userLink.href = `https://github.com/${log.username}`;
-      userLink.textContent = `@${log.username}`;
-      userLink.target = '_blank';
-      userLink.rel = 'noopener';
-      userLink.className = 'log-user-link';
-      meta.appendChild(userLink);
-
-      const message = document.createElement('div');
-      message.className = 'log-message';
-      message.textContent = log.text;
-
-      item.appendChild(meta);
-      item.appendChild(message);
-      this.elements.logList.appendChild(item);
+    if (paths.length === 0) {
+      this.elements.logList.innerHTML = '';
+      this.renderedPaths = [];
+      this.renderedPathSet = new Set();
+      this.updateLogUI();
+      this.scheduleTimelineRender({ rows: true });
+      return;
     }
 
+    const mustRebuild =
+      this.renderedPaths.length === 0 ||
+      paths.length < this.renderedPaths.length ||
+      !this.renderedPathSet ||
+      (this.renderedPaths.length > 0 && paths[0] !== this.renderedPaths[0]);
+
+    if (mustRebuild) {
+      const fragment = document.createDocumentFragment();
+      for (const path of paths) {
+        const log = this.logsByPath.get(path);
+        if (!log) continue;
+        fragment.appendChild(this.buildLogItem(log));
+      }
+      this.elements.logList.innerHTML = '';
+      this.elements.logList.appendChild(fragment);
+      this.renderedPaths = paths;
+      this.renderedPathSet = new Set(paths);
+      this.updateLogUI();
+      this.scrollToBottom();
+      this.scheduleTimelineRender({ rows: true });
+      return;
+    }
+
+    const newPaths = paths.filter(path => !this.renderedPathSet.has(path));
+    if (newPaths.length === 0) {
+      this.updateLogUI();
+      return;
+    }
+
+    newPaths.sort();
+    const lastRendered = this.renderedPaths[this.renderedPaths.length - 1];
+    if (newPaths[0] < lastRendered) {
+      this.renderedPaths = [];
+      this.renderedPathSet = new Set();
+      this.renderLogs();
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    for (const path of newPaths) {
+      const log = this.logsByPath.get(path);
+      if (!log) continue;
+      fragment.appendChild(this.buildLogItem(log));
+      this.renderedPathSet.add(path);
+      this.renderedPaths.push(path);
+    }
+    this.elements.logList.appendChild(fragment);
     this.updateLogUI();
     this.scrollToBottom();
-    this.renderTimeline();
+    this.scheduleTimelineRender({ rows: true });
+  },
+
+  buildLogItem(log) {
+    const item = document.createElement('div');
+    item.className = 'log-item';
+
+    const meta = document.createElement('div');
+    meta.className = 'log-meta';
+    meta.appendChild(document.createTextNode(`${log.date} ${log.time} `));
+
+    if (log.duration) {
+      meta.appendChild(document.createTextNode(`${log.duration} `));
+    }
+
+    const userLink = document.createElement('a');
+    userLink.href = `https://github.com/${log.username}`;
+    userLink.textContent = `@${log.username}`;
+    userLink.target = '_blank';
+    userLink.rel = 'noopener';
+    userLink.className = 'log-user-link';
+    meta.appendChild(userLink);
+
+    const message = document.createElement('div');
+    message.className = 'log-message';
+    message.textContent = log.text;
+
+    item.appendChild(meta);
+    item.appendChild(message);
+    return item;
   },
 
   updateLogUI() {
@@ -1154,6 +1309,7 @@ const App = {
   },
 
   scrollToBottom() {
+    if (this.elements.logsView.classList.contains('hidden')) return;
     this.elements.logContainer.scrollTop = this.elements.logContainer.scrollHeight;
   },
 
