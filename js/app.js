@@ -14,6 +14,7 @@ const App = {
 
   user: null,
   audioCtx: null,
+  originalTitle: '',
   icons: {
     pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" fill="currentColor"></rect><rect x="14" y="5" width="4" height="14" fill="currentColor"></rect></svg>',
     play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l10 7-10 7z" fill="currentColor"></path></svg>'
@@ -34,6 +35,7 @@ const App = {
     this.loadTimerState();
     this.loadLastSeen();
     this.setupAudioUnlock();
+    this.originalTitle = document.title;
 
     if (GitHub.init()) {
       this.showMainScreen().catch(err => {
@@ -106,6 +108,10 @@ const App = {
     });
 
     window.addEventListener('beforeunload', () => this.saveTimerState());
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
   },
 
   setupAudioUnlock() {
@@ -311,6 +317,7 @@ const App = {
     this.isAwaitingLog = true;
     this.showModal(this.elements.logModal);
     this.playBeep();
+    this.triggerAttention();
     this.saveTimerState();
     setTimeout(() => this.elements.logText.focus(), 100);
   },
@@ -327,6 +334,7 @@ const App = {
 
     this.resetAfterLog();
     this.hideModal(this.elements.logModal);
+    this.clearAttention();
   },
 
   async submitLog() {
@@ -353,6 +361,7 @@ const App = {
 
       this.resetAfterLog();
       this.hideModal(this.elements.logModal);
+      this.clearAttention();
     } catch (err) {
       console.error(err);
       this.toast(`Failed to send: ${err.message}`, 'error');
@@ -369,6 +378,58 @@ const App = {
     this.lastTick = Date.now();
     this.updateCounter();
     this.saveTimerState();
+  },
+
+  triggerAttention() {
+    this.flashScreen();
+    this.updateFavicon(true);
+    this.sendNotification();
+    this.vibrateDevice();
+    this.setTitleAlert(true);
+  },
+
+  clearAttention() {
+    this.updateFavicon(false);
+    this.setTitleAlert(false);
+  },
+
+  flashScreen() {
+    document.body.classList.remove('attention-flash');
+    void document.body.offsetHeight;
+    document.body.classList.add('attention-flash');
+    setTimeout(() => document.body.classList.remove('attention-flash'), 1000);
+  },
+
+  setTitleAlert(active) {
+    document.title = active ? 'Worklog — Action Needed' : this.originalTitle;
+  },
+
+  updateFavicon(active) {
+    const favicon = document.getElementById('favicon');
+    if (!favicon) return;
+    const svg = active
+      ? "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23b42318'/%3E%3Ctext x='50' y='62' font-size='58' text-anchor='middle' fill='%23ffffff' font-family='Arial'%3E!%3C/text%3E%3C/svg%3E"
+      : "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23111111'/%3E%3Ctext x='50' y='62' font-size='58' text-anchor='middle' fill='%23ffffff' font-family='Arial'%3EW%3C/text%3E%3C/svg%3E";
+    favicon.href = `data:image/svg+xml,${svg}`;
+  },
+
+  sendNotification() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    try {
+      new Notification('Worklog', {
+        body: 'Time to send your work log.',
+        silent: true
+      });
+    } catch (err) {
+      console.warn('Notification failed', err);
+    }
+  },
+
+  vibrateDevice() {
+    if (navigator && typeof navigator.vibrate === 'function') {
+      navigator.vibrate([120, 60, 120]);
+    }
   },
 
   formatDuration(ms) {
