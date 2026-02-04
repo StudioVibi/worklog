@@ -13,6 +13,10 @@ const App = {
 
   user: null,
   audioCtx: null,
+  icons: {
+    pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" fill="currentColor"></rect><rect x="14" y="5" width="4" height="14" fill="currentColor"></rect></svg>',
+    play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l10 7-10 7z" fill="currentColor"></path></svg>'
+  },
 
   init() {
     this.cacheElements();
@@ -175,6 +179,7 @@ const App = {
     this.lastTick = Date.now();
     this.isPaused = false;
     this.isAwaitingLog = false;
+    this.setPauseButton(false);
     this.updateStatus();
     this.updateCounter();
 
@@ -207,19 +212,19 @@ const App = {
 
   updateCounter() {
     if (this.isPaused) {
-      this.elements.counter.textContent = 'Unregistered: paused';
+      this.elements.counter.textContent = 'Pending: paused';
       this.updateStatus();
       return;
     }
 
     if (this.isAwaitingLog) {
-      this.elements.counter.textContent = 'Unregistered: 60m';
+      this.elements.counter.textContent = 'Pending: 60m';
       this.updateStatus();
       return;
     }
 
     const minutes = Math.min(60, Math.floor(this.elapsedMs / 60000));
-    this.elements.counter.textContent = `Unregistered: ${minutes}m`;
+    this.elements.counter.textContent = `Pending: ${minutes}m`;
     this.updateStatus();
   },
 
@@ -240,9 +245,15 @@ const App = {
   togglePause() {
     if (this.isAwaitingLog) return;
     this.isPaused = !this.isPaused;
-    this.elements.pauseBtn.textContent = this.isPaused ? 'Resume' : 'Pause';
+    this.setPauseButton(this.isPaused);
     this.lastTick = Date.now();
     this.updateCounter();
+  },
+
+  setPauseButton(isPaused) {
+    this.elements.pauseBtn.innerHTML = isPaused ? this.icons.play : this.icons.pause;
+    this.elements.pauseBtn.title = isPaused ? 'Resume' : 'Pause';
+    this.elements.pauseBtn.setAttribute('aria-label', isPaused ? 'Resume' : 'Pause');
   },
 
   showHelp() {
@@ -406,15 +417,20 @@ const App = {
       const item = document.createElement('div');
       item.className = 'log-item';
 
-      const meta = document.createElement('div');
-      meta.className = 'log-meta';
-      meta.textContent = `${log.date} ${log.time} • @${log.username}`;
+      const date = document.createElement('div');
+      date.className = 'log-date';
+      date.textContent = `${log.date} ${log.time}`;
+
+      const user = document.createElement('div');
+      user.className = 'log-user';
+      user.textContent = `@${log.username}`;
 
       const text = document.createElement('div');
       text.className = 'log-text';
       text.textContent = log.text;
 
-      item.appendChild(meta);
+      item.appendChild(date);
+      item.appendChild(user);
       item.appendChild(text);
       this.elements.logList.appendChild(item);
     }

@@ -11,7 +11,7 @@
 </head>
 <body>
   <div id="app" class="app">
-    <section id="login-screen" class="screen">
+    <section id="login-screen" class="screen centered">
       <div class="login-card">
         <div class="login-header">
           <div class="badge">Studio Vibi</div>
@@ -64,10 +64,21 @@
         </div>
 
         <div class="topbar-right">
-          <div class="counter" id="counter">Unregistered: 0m</div>
-          <button id="pause-btn" class="ghost">Pause</button>
-          <button id="logout-btn" class="ghost">Log out</button>
-          <button id="help-btn" class="icon">?</button>
+          <div class="counter" id="counter">Pending: 0m</div>
+          <button id="pause-btn" class="icon-btn" title="Pause" aria-label="Pause">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="6" y="5" width="4" height="14" fill="currentColor"></rect>
+              <rect x="14" y="5" width="4" height="14" fill="currentColor"></rect>
+            </svg>
+          </button>
+          <button id="logout-btn" class="icon-btn" title="Log out" aria-label="Log out">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9"></path>
+              <path d="M5 12h9"></path>
+              <path d="M8 9l-3 3 3 3"></path>
+            </svg>
+          </button>
+          <button id="help-btn" class="icon-btn help-btn" title="About Worklog" aria-label="About Worklog">?</button>
         </div>
       </header>
 
