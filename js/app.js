@@ -18,11 +18,18 @@ const App = {
     pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" fill="currentColor"></rect><rect x="14" y="5" width="4" height="14" fill="currentColor"></rect></svg>',
     play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l10 7-10 7z" fill="currentColor"></path></svg>'
   },
+  storage: {
+    elapsed: 'worklog_elapsed_ms',
+    pending: 'worklog_pending_ms',
+    paused: 'worklog_paused',
+    awaiting: 'worklog_awaiting'
+  },
 
   init() {
     this.cacheElements();
     this.bindEvents();
     this.restoreDraft();
+    this.loadTimerState();
     this.setupAudioUnlock();
 
     if (GitHub.init()) {
@@ -94,6 +101,8 @@ const App = {
         }
       });
     });
+
+    window.addEventListener('beforeunload', () => this.saveTimerState());
   },
 
   setupAudioUnlock() {
@@ -122,6 +131,31 @@ const App = {
     if (draft) {
       this.elements.logText.value = draft;
     }
+  },
+
+  loadTimerState() {
+    const elapsed = Number(localStorage.getItem(this.storage.elapsed));
+    const pending = Number(localStorage.getItem(this.storage.pending));
+    const paused = localStorage.getItem(this.storage.paused);
+    const awaiting = localStorage.getItem(this.storage.awaiting);
+
+    if (!Number.isNaN(elapsed) && elapsed >= 0) {
+      this.elapsedMs = elapsed;
+    }
+
+    if (!Number.isNaN(pending) && pending >= 0) {
+      this.pendingMs = pending;
+    }
+
+    this.isPaused = paused === 'true';
+    this.isAwaitingLog = awaiting === 'true' && this.pendingMs > 0;
+  },
+
+  saveTimerState() {
+    localStorage.setItem(this.storage.elapsed, String(Math.floor(this.elapsedMs)));
+    localStorage.setItem(this.storage.pending, String(Math.floor(this.pendingMs)));
+    localStorage.setItem(this.storage.paused, this.isPaused ? 'true' : 'false');
+    localStorage.setItem(this.storage.awaiting, this.isAwaitingLog ? 'true' : 'false');
   },
 
   showLoginScreen() {
@@ -183,13 +217,16 @@ const App = {
 
   startTimer() {
     this.stopTimers();
-    this.elapsedMs = 0;
-    this.pendingMs = 0;
     this.lastTick = Date.now();
-    this.isPaused = false;
-    this.isAwaitingLog = false;
-    this.setPauseButton(false);
+    this.setPauseButton(this.isPaused);
     this.updateCounter();
+
+    if (this.isAwaitingLog && this.pendingMs > 0) {
+      this.promptLog(this.pendingMs);
+    } else if (!this.isPaused && this.elapsedMs >= 60 * 60 * 1000) {
+      this.elapsedMs = 60 * 60 * 1000;
+      this.promptLog(60 * 60 * 1000);
+    }
 
     this.timerInterval = setInterval(() => this.tick(), 1000);
   },
@@ -216,6 +253,7 @@ const App = {
     }
 
     this.updateCounter();
+    this.saveTimerState();
   },
 
   updateCounter() {
@@ -229,6 +267,7 @@ const App = {
     this.setPauseButton(this.isPaused);
     this.lastTick = Date.now();
     this.updateCounter();
+    this.saveTimerState();
   },
 
   setPauseButton(isPaused) {
@@ -256,6 +295,7 @@ const App = {
     this.isAwaitingLog = true;
     this.showModal(this.elements.logModal);
     this.playBeep();
+    this.saveTimerState();
     setTimeout(() => this.elements.logText.focus(), 100);
   },
 
@@ -266,7 +306,7 @@ const App = {
   },
 
   cancelLog() {
-    const ok = window.confirm('Cancel this hour? These minutes will NOT be logged, NOT counted as work hours, and NOT billable. If you actually worked, please fill the note and click Send.');
+    const ok = window.confirm('Erase this hour? These minutes will NOT be logged, NOT counted as work hours, and NOT billable. If you actually worked, please fill the note and click Send.');
     if (!ok) return;
 
     this.resetAfterLog();
@@ -312,6 +352,7 @@ const App = {
     this.pendingMs = 0;
     this.lastTick = Date.now();
     this.updateCounter();
+    this.saveTimerState();
   },
 
   formatDuration(ms) {
