@@ -148,6 +148,7 @@ const App = {
     });
 
     window.addEventListener('beforeunload', () => this.saveTimerState());
+    window.addEventListener('resize', () => this.renderTimeline());
 
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
@@ -346,7 +347,10 @@ const App = {
     this.elements.timelineView.classList.remove('hidden');
     this.elements.tabLogs.classList.remove('active');
     this.elements.tabTimeline.classList.add('active');
-    this.renderTimeline();
+    requestAnimationFrame(() => {
+      this.centerTimeline();
+      this.renderTimeline();
+    });
   },
 
   openProfile() {
