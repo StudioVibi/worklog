@@ -87,6 +87,7 @@ const App = {
       timelineScroll: document.getElementById('timeline-scroll'),
       timelineCanvas: document.getElementById('timeline-canvas'),
       timelineGrid: document.getElementById('timeline-grid'),
+      timelineLabels: document.getElementById('timeline-labels'),
       timelineRows: document.getElementById('timeline-rows'),
       timelineTooltip: document.getElementById('timeline-tooltip'),
       logModal: document.getElementById('log-modal'),
@@ -648,6 +649,8 @@ const App = {
 
       const headSha = await GitHub.getHeadCommitSha();
       if (!headSha) {
+        this.logsByPath.clear();
+        this.lastSeenSha = null;
         this.updateLogUI();
         return;
       }
@@ -851,7 +854,9 @@ const App = {
 
   renderTimelineGrid() {
     const grid = this.elements.timelineGrid;
+    const labels = this.elements.timelineLabels;
     grid.innerHTML = '';
+    labels.innerHTML = '';
 
     const scale = this.timeline.scale;
     const periodWidth = this.timeline.periodWidth[scale];
@@ -870,7 +875,7 @@ const App = {
         const date = this.addPeriods(this.timeline.anchorStart, i, scale);
         label.textContent = this.formatPeriodLabel(date, scale);
         label.style.left = `${x + 4}px`;
-        grid.appendChild(label);
+        labels.appendChild(label);
       }
     }
   },

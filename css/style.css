@@ -476,6 +476,14 @@ button.danger {
   z-index: 1;
 }
 
+.timeline-labels {
+  position: sticky;
+  top: 0;
+  height: 28px;
+  background: #fafafa;
+  z-index: 4;
+}
+
 .timeline-line {
   position: absolute;
   top: 0;
@@ -486,7 +494,7 @@ button.danger {
 
 .timeline-label {
   position: absolute;
-  top: 4px;
+  top: 6px;
   font-size: 0.7rem;
   color: #6b7280;
 }
@@ -494,6 +502,7 @@ button.danger {
 .timeline-rows {
   position: relative;
   z-index: 2;
+  margin-top: 28px;
 }
 
 .timeline-row {

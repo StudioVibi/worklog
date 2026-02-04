@@ -51,7 +51,9 @@ const GitHub = {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || `API error: ${response.status}`);
+      const err = new Error(error.message || `API error: ${response.status}`);
+      err.status = response.status;
+      throw err;
     }
 
     return await response.json();
@@ -95,6 +97,9 @@ const GitHub = {
       if (!tree.tree) return [];
       return tree.tree.filter(entry => entry.type === 'blob' && entry.path.startsWith('logs/'));
     } catch (err) {
+      if (err.status === 404) {
+        return [];
+      }
       if (String(err.message).toLowerCase().includes('not found')) {
         return [];
       }
@@ -103,8 +108,15 @@ const GitHub = {
   },
 
   async getHeadCommitSha() {
-    const commit = await this.api(`/repos/${this.owner}/${this.repo}/commits/main`);
-    return commit.sha;
+    try {
+      const commit = await this.api(`/repos/${this.owner}/${this.repo}/commits/main`);
+      return commit.sha;
+    } catch (err) {
+      if (err.status === 404) {
+        return null;
+      }
+      throw err;
+    }
   },
 
   async compareCommits(base, head) {
