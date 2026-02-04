@@ -563,6 +563,10 @@ button.danger {
   opacity: 0.85;
 }
 
+.timeline-bar.tiny {
+  opacity: 0.55;
+}
+
 .timeline-tooltip {
   position: fixed;
   z-index: 2000;

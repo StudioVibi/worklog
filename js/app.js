@@ -40,7 +40,7 @@ const App = {
   timeline: {
     scale: 'daily',
     periodCount: 0,
-    periodWidth: { daily: 140, weekly: 200, monthly: 220 },
+    periodWidth: { daily: 420, weekly: 240, monthly: 240 },
     bufferScreens: 4,
     anchorStart: null,
     initialized: false,
@@ -1023,15 +1023,27 @@ const App = {
 
       user.logs.forEach(log => {
         if (!log.dateObj) return;
-        if (log.dateObj < rangeStart || log.dateObj > rangeEnd) return;
-        const x = this.timeToX(log.dateObj);
         const durationMs = log.durationMs || this.intervalMs;
-        const barWidth = Math.max(4, this.durationToWidth(log.dateObj, durationMs));
+        const endTime = log.dateObj;
+        const startTime = new Date(endTime.getTime() - durationMs);
+        if (endTime < rangeStart || startTime > rangeEnd) return;
+        const visibleStart = startTime < rangeStart ? rangeStart : startTime;
+        const visibleEnd = endTime > rangeEnd ? rangeEnd : endTime;
+        const visibleDuration = Math.max(0, visibleEnd - visibleStart);
+        if (visibleDuration <= 0) return;
+        const x = this.timeToX(visibleStart);
+        let barWidth = this.durationToWidth(visibleStart, visibleDuration);
+        const minWidth = 6;
+        const isTiny = barWidth < minWidth;
+        if (isTiny) barWidth = minWidth;
 
         const bar = document.createElement('div');
         bar.className = 'timeline-bar';
         bar.style.left = `${x}px`;
         bar.style.width = `${barWidth}px`;
+        if (isTiny) {
+          bar.classList.add('tiny');
+        }
 
         bar.addEventListener('mouseenter', (event) => this.showTimelineTooltip(event, log));
         bar.addEventListener('mouseleave', () => this.hideTimelineTooltip());
@@ -1316,7 +1328,7 @@ const App = {
   },
 
   startPolling() {
-    this.pollInterval = setInterval(() => this.loadLogs(), 20000);
+    this.pollInterval = setInterval(() => this.loadLogs(), 5000);
   },
 
   playBeep() {
