@@ -6,6 +6,7 @@ const GitHub = {
   token: null,
   tokenKey: null,
   user: null,
+  repoInfo: null,
 
   init() {
     const keys = ['worklog_github_token', 'github_token'];
@@ -33,6 +34,7 @@ const GitHub = {
     this.token = null;
     this.tokenKey = null;
     this.user = null;
+    this.repoInfo = null;
   },
 
   async api(endpoint, options = {}) {
@@ -80,6 +82,12 @@ const GitHub = {
     return this.user;
   },
 
+  async getRepoInfo() {
+    if (this.repoInfo) return this.repoInfo;
+    this.repoInfo = await this.api(`/repos/${this.owner}/${this.repo}`);
+    return this.repoInfo;
+  },
+
   async createLogFile(path, content) {
     const encoded = btoa(unescape(encodeURIComponent(content)));
     return await this.api(`/repos/${this.owner}/${this.repo}/contents/${path}`, {
@@ -93,7 +101,9 @@ const GitHub = {
 
   async listLogTree() {
     try {
-      const tree = await this.api(`/repos/${this.owner}/${this.repo}/git/trees/main?recursive=1`);
+      const repoInfo = await this.getRepoInfo();
+      const branch = repoInfo.default_branch || 'main';
+      const tree = await this.api(`/repos/${this.owner}/${this.repo}/git/trees/${branch}?recursive=1`);
       if (!tree.tree) return [];
       return tree.tree.filter(entry => entry.type === 'blob' && entry.path.startsWith('logs/'));
     } catch (err) {
@@ -109,7 +119,9 @@ const GitHub = {
 
   async getHeadCommitSha() {
     try {
-      const commit = await this.api(`/repos/${this.owner}/${this.repo}/commits/main`);
+      const repoInfo = await this.getRepoInfo();
+      const branch = repoInfo.default_branch || 'main';
+      const commit = await this.api(`/repos/${this.owner}/${this.repo}/commits/${branch}`);
       return commit.sha;
     } catch (err) {
       if (err.status === 404) {

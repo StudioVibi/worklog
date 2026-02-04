@@ -324,7 +324,7 @@ button.danger {
 
 .log-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
@@ -333,21 +333,28 @@ button.danger {
 
 .tab-bar {
   display: inline-flex;
-  gap: 6px;
+  gap: 8px;
+  align-items: center;
 }
 
 .tab-btn {
-  border: 1px solid var(--line);
-  background: #fff;
-  padding: 4px 10px;
-  font-size: 0.75rem;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 0.8rem;
   cursor: pointer;
+  color: var(--muted);
 }
 
 .tab-btn.active {
-  background: #111;
-  color: #fff;
-  border-color: #111;
+  color: #111;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.tab-separator {
+  color: var(--line);
+  font-size: 0.8rem;
 }
 
 .logs-view,
@@ -471,7 +478,7 @@ button.danger {
 
 .timeline-grid {
   position: absolute;
-  inset: 0;
+  inset: 28px 0 0 0;
   pointer-events: none;
   z-index: 1;
 }

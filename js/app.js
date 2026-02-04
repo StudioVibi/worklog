@@ -78,7 +78,6 @@ const App = {
       logList: document.getElementById('log-list'),
       logLoading: document.getElementById('log-loading'),
       logEmpty: document.getElementById('log-empty'),
-      viewTitle: document.getElementById('view-title'),
       tabLogs: document.getElementById('tab-logs'),
       tabTimeline: document.getElementById('tab-timeline'),
       logsView: document.getElementById('logs-view'),
@@ -336,7 +335,6 @@ const App = {
   },
 
   showLogsTab() {
-    this.elements.viewTitle.textContent = 'Logs';
     this.elements.logsView.classList.remove('hidden');
     this.elements.timelineView.classList.add('hidden');
     this.elements.tabLogs.classList.add('active');
@@ -344,7 +342,6 @@ const App = {
   },
 
   showTimelineTab() {
-    this.elements.viewTitle.textContent = 'Timeline';
     this.elements.logsView.classList.add('hidden');
     this.elements.timelineView.classList.remove('hidden');
     this.elements.tabLogs.classList.remove('active');
