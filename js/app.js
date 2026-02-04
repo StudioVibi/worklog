@@ -32,11 +32,13 @@ const App = {
   intervalMs: 60 * 60 * 1000,
   timeline: {
     scale: 'daily',
-    periodCount: 120,
+    periodCount: 0,
     periodWidth: { daily: 140, weekly: 200, monthly: 220 },
+    bufferScreens: 4,
     anchorStart: null,
     initialized: false,
-    adjusting: false
+    adjusting: false,
+    hasCentered: false
   },
 
   init() {
@@ -82,7 +84,6 @@ const App = {
       tabTimeline: document.getElementById('tab-timeline'),
       logsView: document.getElementById('logs-view'),
       timelineView: document.getElementById('timeline-view'),
-      timelineRange: document.getElementById('timeline-range'),
       timelineScroll: document.getElementById('timeline-scroll'),
       timelineCanvas: document.getElementById('timeline-canvas'),
       timelineGrid: document.getElementById('timeline-grid'),
@@ -348,7 +349,13 @@ const App = {
     this.elements.tabLogs.classList.remove('active');
     this.elements.tabTimeline.classList.add('active');
     requestAnimationFrame(() => {
-      this.centerTimeline();
+      if (!this.timeline.hasCentered) {
+        this.ensureTimelineSized(new Date());
+        this.centerTimelineOnDate(new Date());
+        this.timeline.hasCentered = true;
+      } else {
+        this.ensureTimelineSized();
+      }
       this.renderTimeline();
     });
   },
@@ -755,45 +762,38 @@ const App = {
   initTimeline() {
     if (this.timeline.initialized) return;
     this.timeline.initialized = true;
-
-    const now = new Date();
-    const half = Math.floor(this.timeline.periodCount / 2);
-    this.timeline.anchorStart = this.startOfPeriod(
-      this.addPeriods(now, -half, this.timeline.scale),
-      this.timeline.scale
-    );
-
-    this.updateTimelineCanvas();
-
-    requestAnimationFrame(() => {
-      this.centerTimeline();
-      this.renderTimeline();
-    });
   },
 
-  updateTimelineCanvas() {
-    const width = this.timeline.periodCount * this.timeline.periodWidth[this.timeline.scale];
-    this.elements.timelineCanvas.style.width = `${width}px`;
-  },
-
-  centerTimeline() {
-    const totalWidth = this.timeline.periodCount * this.timeline.periodWidth[this.timeline.scale];
+  ensureTimelineSized(centerDate = null) {
     const viewWidth = this.elements.timelineScroll.clientWidth;
-    if (viewWidth <= 0) return;
+    if (!viewWidth) return false;
 
-    const targetDate = new Date();
-    let x = this.timeToX(targetDate);
+    const periodWidth = this.timeline.periodWidth[this.timeline.scale];
+    const canvasWidth = Math.max(viewWidth * this.timeline.bufferScreens, periodWidth * 30);
+    const periodCount = Math.ceil(canvasWidth / periodWidth);
+    this.timeline.periodCount = periodCount;
 
-    if (x < 0 || x > totalWidth) {
-      const half = Math.floor(this.timeline.periodCount / 2);
+    const totalWidth = periodCount * periodWidth;
+    this.elements.timelineCanvas.style.width = `${totalWidth}px`;
+    this.elements.timelineLabels.style.width = `${totalWidth}px`;
+
+    if (!this.timeline.anchorStart || centerDate) {
+      const base = centerDate || new Date();
+      const half = Math.floor(periodCount / 2);
       this.timeline.anchorStart = this.startOfPeriod(
-        this.addPeriods(targetDate, -half, this.timeline.scale),
+        this.addPeriods(base, -half, this.timeline.scale),
         this.timeline.scale
       );
-      this.updateTimelineCanvas();
-      x = this.timeToX(targetDate);
     }
 
+    return true;
+  },
+
+  centerTimelineOnDate(date) {
+    const viewWidth = this.elements.timelineScroll.clientWidth;
+    if (!viewWidth) return;
+    const totalWidth = this.timeline.periodCount * this.timeline.periodWidth[this.timeline.scale];
+    const x = this.timeToX(date);
     const maxScroll = Math.max(0, totalWidth - viewWidth);
     const target = Math.min(Math.max(0, x - viewWidth / 2), maxScroll);
     this.elements.timelineScroll.scrollLeft = target;
@@ -811,22 +811,18 @@ const App = {
       btn.classList.toggle('active', btn.dataset.scale === scale);
     });
 
-    const half = Math.floor(this.timeline.periodCount / 2);
-    this.timeline.anchorStart = this.startOfPeriod(
-      this.addPeriods(centerDate, -half, this.timeline.scale),
-      this.timeline.scale
-    );
-
-    this.updateTimelineCanvas();
-    this.centerTimeline();
+    this.timeline.anchorStart = null;
+    this.ensureTimelineSized(centerDate);
+    this.centerTimelineOnDate(centerDate);
     this.renderTimeline();
   },
 
   handleTimelineScroll() {
     if (this.timeline.adjusting) return;
-    const totalWidth = this.timeline.periodCount * this.timeline.periodWidth[this.timeline.scale];
     const scrollLeft = this.elements.timelineScroll.scrollLeft;
-    const threshold = totalWidth * 0.2;
+    const viewWidth = this.elements.timelineScroll.clientWidth;
+    const totalWidth = this.timeline.periodCount * this.timeline.periodWidth[this.timeline.scale];
+    const threshold = viewWidth;
     const shiftPeriods = Math.floor(this.timeline.periodCount / 3);
     const shiftWidth = shiftPeriods * this.timeline.periodWidth[this.timeline.scale];
 
@@ -847,26 +843,13 @@ const App = {
       this.renderTimeline();
       return;
     }
-
-    this.updateTimelineRange();
-  },
-
-  updateTimelineRange() {
-    const start = this.dateFromX(this.elements.timelineScroll.scrollLeft);
-    const end = this.dateFromX(this.elements.timelineScroll.scrollLeft + this.elements.timelineScroll.clientWidth);
-    this.elements.timelineRange.textContent = `${this.formatRangeDate(start)} — ${this.formatRangeDate(end)}`;
-  },
-
-  formatRangeDate(date) {
-    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
   },
 
   renderTimeline() {
     if (!this.timeline.initialized) return;
-    this.updateTimelineCanvas();
+    if (!this.ensureTimelineSized()) return;
     this.renderTimelineGrid();
     this.renderTimelineRows();
-    this.updateTimelineRange();
   },
 
   renderTimelineGrid() {

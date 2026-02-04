@@ -434,15 +434,11 @@ button.danger {
 .timeline-controls {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 12px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--line-soft);
   background: #fff;
-}
-
-.timeline-range {
-  font-size: 0.8rem;
-  color: var(--muted);
 }
 
 .timeline-scales {
