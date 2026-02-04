@@ -95,6 +95,16 @@ const GitHub = {
     return tree.tree.filter(entry => entry.type === 'blob' && entry.path.startsWith('logs/'));
   },
 
+  async getHeadCommitSha() {
+    const commit = await this.api(`/repos/${this.owner}/${this.repo}/commits/main`);
+    return commit.sha;
+  },
+
+  async compareCommits(base, head) {
+    const ref = `${encodeURIComponent(base)}...${encodeURIComponent(head)}`;
+    return await this.api(`/repos/${this.owner}/${this.repo}/compare/${ref}`);
+  },
+
   async getBlobContent(sha) {
     const blob = await this.api(`/repos/${this.owner}/${this.repo}/git/blobs/${sha}`);
     if (!blob.content) return '';

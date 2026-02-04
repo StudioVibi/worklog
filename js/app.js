@@ -22,14 +22,17 @@ const App = {
     elapsed: 'worklog_elapsed_ms',
     pending: 'worklog_pending_ms',
     paused: 'worklog_paused',
-    awaiting: 'worklog_awaiting'
+    awaiting: 'worklog_awaiting',
+    lastSeen: 'worklog_last_seen_sha'
   },
+  lastSeenSha: null,
 
   init() {
     this.cacheElements();
     this.bindEvents();
     this.restoreDraft();
     this.loadTimerState();
+    this.loadLastSeen();
     this.setupAudioUnlock();
 
     if (GitHub.init()) {
@@ -151,11 +154,24 @@ const App = {
     this.isAwaitingLog = awaiting === 'true' && this.pendingMs > 0;
   },
 
+  loadLastSeen() {
+    const stored = localStorage.getItem(this.storage.lastSeen);
+    if (stored) {
+      this.lastSeenSha = stored;
+    }
+  },
+
   saveTimerState() {
     localStorage.setItem(this.storage.elapsed, String(Math.floor(this.elapsedMs)));
     localStorage.setItem(this.storage.pending, String(Math.floor(this.pendingMs)));
     localStorage.setItem(this.storage.paused, this.isPaused ? 'true' : 'false');
     localStorage.setItem(this.storage.awaiting, this.isAwaitingLog ? 'true' : 'false');
+  },
+
+  saveLastSeen(sha) {
+    if (!sha) return;
+    this.lastSeenSha = sha;
+    localStorage.setItem(this.storage.lastSeen, sha);
   },
 
   showLoginScreen() {
@@ -406,7 +422,7 @@ const App = {
     this.renderLogs();
   },
 
-  async loadLogs() {
+  async loadLogs(forceFull = false) {
     if (this.isLoadingLogs) return;
     this.isLoadingLogs = true;
 
@@ -414,37 +430,104 @@ const App = {
       if (this.logsByPath.size === 0) {
         this.elements.logLoading.classList.remove('hidden');
       }
-      const entries = await GitHub.listLogTree();
-      const newEntries = entries.filter(entry => !this.logsByPath.has(entry.path));
 
-      if (newEntries.length === 0) {
+      const headSha = await GitHub.getHeadCommitSha();
+      if (!headSha) {
         this.updateLogUI();
         return;
       }
 
-      const batchSize = 10;
-      for (let i = 0; i < newEntries.length; i += batchSize) {
-        const batch = newEntries.slice(i, i + batchSize);
-        const contents = await Promise.all(batch.map(item => GitHub.getBlobContent(item.sha)));
-
-        batch.forEach((entry, index) => {
-          const parsed = this.parseLogPath(entry.path);
-          if (!parsed) return;
-          this.logsByPath.set(entry.path, {
-            path: entry.path,
-            ...parsed,
-            text: contents[index]
-          });
-        });
+      if (forceFull || !this.lastSeenSha || this.logsByPath.size === 0) {
+        await this.loadAllLogs(headSha);
+        return;
       }
 
-      this.renderLogs();
+      await this.loadIncrementalLogs(headSha);
     } catch (err) {
       console.error(err);
       this.toast(`Failed to load logs: ${err.message}`, 'error');
       this.updateLogUI();
     } finally {
       this.isLoadingLogs = false;
+    }
+  },
+
+  async loadAllLogs(headSha) {
+    const entries = await GitHub.listLogTree();
+    this.logsByPath.clear();
+    await this.storeEntries(entries, { skipExisting: false });
+    this.saveLastSeen(headSha);
+    this.renderLogs();
+  },
+
+  async loadIncrementalLogs(headSha) {
+    if (headSha === this.lastSeenSha) {
+      this.updateLogUI();
+      return;
+    }
+
+    let compare;
+    try {
+      compare = await GitHub.compareCommits(this.lastSeenSha, headSha);
+    } catch (err) {
+      await this.loadAllLogs(headSha);
+      return;
+    }
+
+    if (!compare || !compare.status) {
+      await this.loadAllLogs(headSha);
+      return;
+    }
+
+    if (compare.status !== 'ahead' && compare.status !== 'identical') {
+      await this.loadAllLogs(headSha);
+      return;
+    }
+
+    const files = (compare.files || [])
+      .filter(file => file.filename && file.filename.startsWith('logs/'))
+      .filter(file => file.status !== 'removed')
+      .map(file => ({ path: file.filename, sha: file.sha }));
+
+    if (files.length >= 300) {
+      await this.loadAllLogs(headSha);
+      return;
+    }
+
+    if (files.length === 0) {
+      this.saveLastSeen(headSha);
+      this.updateLogUI();
+      return;
+    }
+
+    await this.storeEntries(files, { skipExisting: true });
+    this.saveLastSeen(headSha);
+    this.renderLogs();
+  },
+
+  async storeEntries(entries, { skipExisting }) {
+    const targets = skipExisting
+      ? entries.filter(entry => !this.logsByPath.has(entry.path))
+      : entries;
+
+    if (targets.length === 0) {
+      return;
+    }
+
+    const batchSize = 10;
+    for (let i = 0; i < targets.length; i += batchSize) {
+      const batch = targets.slice(i, i + batchSize);
+      const contents = await Promise.all(batch.map(item => GitHub.getBlobContent(item.sha)));
+
+      batch.forEach((entry, index) => {
+        const parsed = this.parseLogPath(entry.path);
+        if (!parsed) return;
+        this.logsByPath.set(entry.path, {
+          path: entry.path,
+          ...parsed,
+          text: contents[index]
+        });
+      });
     }
   },
 
