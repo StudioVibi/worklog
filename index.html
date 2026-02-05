@@ -157,9 +157,12 @@
       </div>
       <div id="log-error" class="log-error hidden"></div>
       <textarea id="log-text" rows="4" placeholder="e.g. debugging race condition on HVM's collapser.c"></textarea>
-      <div class="modal-actions">
-        <button id="cancel-log" class="danger">Erase</button>
-        <button id="register-log" class="primary">Send</button>
+      <div class="modal-actions log-modal-actions">
+        <div id="log-queue-meta" class="log-queue-meta"></div>
+        <div class="log-modal-buttons">
+          <button id="cancel-log" class="danger">Erase</button>
+          <button id="register-log" class="primary">Send</button>
+        </div>
       </div>
     </div>
   </div>

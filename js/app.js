@@ -14,6 +14,8 @@ const App = {
   isSavingLog: false,
   elapsedMs: 0,
   pendingMs: 0,
+  pendingLogQueue: [],
+  activePendingLog: null,
   lastTick: null,
   timerInterval: null,
   pollInterval: null,
@@ -105,6 +107,7 @@ const App = {
       logTime: document.getElementById('log-time'),
       logHours: document.getElementById('log-hours'),
       logMinutes: document.getElementById('log-minutes'),
+      logQueueMeta: document.getElementById('log-queue-meta'),
       logError: document.getElementById('log-error'),
       logText: document.getElementById('log-text'),
       registerLog: document.getElementById('register-log'),
@@ -139,8 +142,8 @@ const App = {
 
     [this.elements.logDate, this.elements.logTime, this.elements.logHours, this.elements.logMinutes].forEach(input => {
       if (!input) return;
-      input.addEventListener('input', () => this.validateLogTimespan({ updatePending: true }));
-      input.addEventListener('change', () => this.validateLogTimespan({ updatePending: true }));
+      input.addEventListener('input', () => this.validateLogTimespan());
+      input.addEventListener('change', () => this.validateLogTimespan());
     });
 
     this.elements.logText.addEventListener('keydown', (event) => {
@@ -225,12 +228,21 @@ const App = {
           if (typeof data.elapsed === 'number' && data.elapsed >= 0) {
             this.elapsedMs = data.elapsed;
           }
-          if (typeof data.pending === 'number' && data.pending >= 0) {
-            this.pendingMs = data.pending;
-          }
           this.isPaused = data.paused === true;
-          this.isAwaitingLog = data.awaiting === true && this.pendingMs > 0;
-          this.lastSavedTimer = { ...data };
+          if (Array.isArray(data.queue)) {
+            this.pendingLogQueue = data.queue
+              .map(entry => this.normalizePendingQueueEntry(entry))
+              .filter(Boolean);
+          } else if (typeof data.pending === 'number' && data.pending > 0 && data.awaiting === true) {
+            const now = Date.now();
+            this.pendingLogQueue = [{
+              durationMs: Math.floor(data.pending),
+              appearedAtMs: now,
+              endAtMs: now
+            }];
+          }
+          this.syncPendingQueueState();
+          this.lastSavedTimer = null;
           return;
         }
       } catch (err) {
@@ -247,12 +259,41 @@ const App = {
       this.elapsedMs = elapsed;
     }
 
-    if (!Number.isNaN(pending) && pending >= 0) {
-      this.pendingMs = pending;
-    }
-
     this.isPaused = paused === 'true';
-    this.isAwaitingLog = awaiting === 'true' && this.pendingMs > 0;
+    if (!Number.isNaN(pending) && pending > 0 && awaiting === 'true') {
+      const now = Date.now();
+      this.pendingLogQueue = [{
+        durationMs: Math.floor(pending),
+        appearedAtMs: now,
+        endAtMs: now
+      }];
+    }
+    this.syncPendingQueueState();
+  },
+
+  normalizePendingQueueEntry(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+
+    const durationMs = Number(entry.durationMs);
+    const appearedAtMs = Number(
+      entry.appearedAtMs ?? entry.appearedAt ?? entry.endAtMs ?? entry.endAt
+    );
+    const endAtMs = Number(entry.endAtMs ?? entry.endAt ?? appearedAtMs);
+
+    if (!Number.isFinite(durationMs) || durationMs <= 0) return null;
+    if (!Number.isFinite(appearedAtMs) || !Number.isFinite(endAtMs)) return null;
+
+    return {
+      durationMs: Math.max(60 * 1000, Math.floor(durationMs)),
+      appearedAtMs: Math.floor(appearedAtMs),
+      endAtMs: Math.floor(endAtMs)
+    };
+  },
+
+  syncPendingQueueState() {
+    const current = this.pendingLogQueue[0] || null;
+    this.isAwaitingLog = !!current;
+    this.pendingMs = current ? current.durationMs : 0;
   },
 
   loadInterval() {
@@ -273,24 +314,18 @@ const App = {
   saveTimerState() {
     const data = {
       elapsed: Math.floor(this.elapsedMs),
-      pending: Math.floor(this.pendingMs),
       paused: this.isPaused,
-      awaiting: this.isAwaitingLog
+      queue: this.pendingLogQueue.map(entry => ({
+        durationMs: Math.floor(entry.durationMs),
+        appearedAtMs: Math.floor(entry.appearedAtMs),
+        endAtMs: Math.floor(entry.endAtMs)
+      }))
     };
+    const packed = JSON.stringify(data);
+    if (this.lastSavedTimer === packed) return;
 
-    const last = this.lastSavedTimer;
-    if (
-      last &&
-      last.elapsed === data.elapsed &&
-      last.pending === data.pending &&
-      last.paused === data.paused &&
-      last.awaiting === data.awaiting
-    ) {
-      return;
-    }
-
-    this.lastSavedTimer = { ...data };
-    localStorage.setItem(this.storage.timerState, JSON.stringify(data));
+    this.lastSavedTimer = packed;
+    localStorage.setItem(this.storage.timerState, packed);
   },
 
   saveLastSeen(sha) {
@@ -362,12 +397,16 @@ const App = {
     this.elements.intervalInput.value = minutes;
     localStorage.setItem(this.storage.interval, String(minutes));
 
-    if (!this.isAwaitingLog && !this.isPaused && this.elapsedMs >= this.intervalMs) {
-      this.elapsedMs = this.intervalMs;
-      this.promptLog(this.intervalMs);
-    } else {
-      this.updateCounter();
+    if (!this.isPaused) {
+      const queued = this.queueElapsedIntervals(Date.now());
+      if (queued > 0) {
+        this.showPendingLogModal();
+        this.playBeep();
+        this.triggerAttention();
+      }
     }
+    this.updateCounter();
+    this.saveTimerState();
   },
 
   toggleIntervalVisibility() {
@@ -466,15 +505,23 @@ const App = {
     this.stopTimers();
     this.lastTick = Date.now();
     this.setPauseButton(this.isPaused);
-    this.updateCounter();
 
-    if (this.isAwaitingLog && this.pendingMs > 0) {
-      this.promptLog(this.pendingMs);
-    } else if (!this.isPaused && this.elapsedMs >= this.intervalMs) {
-      this.elapsedMs = this.intervalMs;
-      this.promptLog(this.intervalMs);
+    if (!this.isPaused) {
+      const queued = this.queueElapsedIntervals(this.lastTick);
+      if (queued > 0) {
+        this.playBeep();
+        this.triggerAttention();
+      }
     }
 
+    this.showPendingLogModal();
+    if (this.isAwaitingLog) {
+      this.updateFavicon(true);
+      this.setTitleAlert(true);
+    }
+
+    this.updateCounter();
+    this.saveTimerState();
     this.timerInterval = setInterval(() => this.tick(), 1000);
   },
 
@@ -490,13 +537,14 @@ const App = {
     const delta = now - this.lastTick;
     this.lastTick = now;
 
-    if (!this.isPaused && !this.isAwaitingLog) {
+    if (!this.isPaused) {
       this.elapsedMs += delta;
-    }
-
-    if (this.elapsedMs >= this.intervalMs && !this.isAwaitingLog) {
-      this.elapsedMs = this.intervalMs;
-      this.promptLog(this.intervalMs);
+      const queued = this.queueElapsedIntervals(now);
+      if (queued > 0) {
+        this.showPendingLogModal();
+        this.playBeep();
+        this.triggerAttention();
+      }
     }
 
     this.updateCounter();
@@ -504,8 +552,7 @@ const App = {
   },
 
   updateCounter() {
-    const displayMs = this.isAwaitingLog ? this.pendingMs : this.elapsedMs;
-    const text = `Worked: ${this.formatDuration(displayMs)}`;
+    const text = `Worked: ${this.formatDuration(this.elapsedMs)}`;
     if (text !== this.lastCounterText) {
       this.elements.counter.textContent = text;
       this.lastCounterText = text;
@@ -513,12 +560,92 @@ const App = {
   },
 
   togglePause() {
-    if (this.isAwaitingLog) return;
     this.isPaused = !this.isPaused;
     this.setPauseButton(this.isPaused);
     this.lastTick = Date.now();
     this.updateCounter();
     this.saveTimerState();
+  },
+
+  queuePendingLog(durationMs, { appearedAtMs = Date.now(), endAtMs = appearedAtMs } = {}) {
+    const normalized = this.normalizePendingQueueEntry({ durationMs, appearedAtMs, endAtMs });
+    if (!normalized) return false;
+
+    this.pendingLogQueue.push(normalized);
+    this.syncPendingQueueState();
+    return true;
+  },
+
+  queueElapsedIntervals(now = Date.now()) {
+    if (!Number.isFinite(this.intervalMs) || this.intervalMs <= 0) return 0;
+    const dueCount = Math.floor(this.elapsedMs / this.intervalMs);
+    if (dueCount <= 0) return 0;
+
+    const remainder = this.elapsedMs - dueCount * this.intervalMs;
+    for (let i = 0; i < dueCount; i += 1) {
+      const offsetMs = (dueCount - i - 1) * this.intervalMs + remainder;
+      const alarmAtMs = now - offsetMs;
+      this.queuePendingLog(this.intervalMs, { appearedAtMs: alarmAtMs, endAtMs: alarmAtMs });
+    }
+
+    this.elapsedMs = remainder;
+    return dueCount;
+  },
+
+  showPendingLogModal(force = false) {
+    const current = this.pendingLogQueue[0] || null;
+    if (!current) {
+      this.activePendingLog = null;
+      this.clearPendingLogMeta();
+      this.hideModal(this.elements.logModal);
+      return;
+    }
+
+    this.updatePendingLogMeta(current);
+    const isVisible = !this.elements.logModal.classList.contains('hidden');
+    const isSamePrompt = this.activePendingLog === current;
+    if (!force && isVisible && isSamePrompt) return;
+
+    this.activePendingLog = current;
+    this.showModal(this.elements.logModal);
+    this.populateLogTimespan(current.durationMs, current.endAtMs);
+    this.validateLogTimespan();
+    setTimeout(() => this.elements.logText.focus(), 100);
+  },
+
+  completeCurrentPendingLog() {
+    if (this.pendingLogQueue.length > 0) {
+      this.pendingLogQueue.shift();
+    }
+    this.activePendingLog = null;
+    this.syncPendingQueueState();
+    this.showPendingLogModal();
+
+    if (!this.isAwaitingLog) {
+      this.clearLogError();
+      this.clearAttention();
+    }
+
+    this.saveTimerState();
+  },
+
+  formatPendingLogTimestamp(timestampMs) {
+    const date = new Date(timestampMs);
+    const parts = Time.getZonedParts(date);
+    const pad = (value) => String(value).padStart(2, '0');
+    return `${pad(parts.hour)}:${pad(parts.minute)} (${parts.year}-${pad(parts.month)}-${pad(parts.day)})`;
+  },
+
+  updatePendingLogMeta(entry) {
+    if (!this.elements.logQueueMeta || !entry) return;
+    const appearedAt = this.formatPendingLogTimestamp(entry.appearedAtMs);
+    const worth = this.formatDuration(entry.durationMs);
+    this.elements.logQueueMeta.textContent = `Appeared at: ${appearedAt}\nWorth: ${worth}`;
+  },
+
+  clearPendingLogMeta() {
+    if (!this.elements.logQueueMeta) return;
+    this.elements.logQueueMeta.textContent = '';
   },
 
   setPauseButton(isPaused) {
@@ -541,32 +668,25 @@ const App = {
     modal.setAttribute('aria-hidden', 'true');
   },
 
-  promptLog(durationMs) {
-    this.pendingMs = durationMs;
-    this.isAwaitingLog = true;
-    this.showModal(this.elements.logModal);
-    this.populateLogTimespan(durationMs);
-    this.validateLogTimespan({ updatePending: true });
-    this.playBeep();
-    this.triggerAttention();
-    this.saveTimerState();
-    setTimeout(() => this.elements.logText.focus(), 100);
-  },
-
   triggerManualLog() {
     if (this.isAwaitingLog) return;
-    this.promptLog(this.elapsedMs);
+    const now = Date.now();
+    if (!this.queuePendingLog(this.elapsedMs, { appearedAtMs: now, endAtMs: now })) return;
+    this.elapsedMs = 0;
+    this.lastTick = now;
+    this.showPendingLogModal(true);
+    this.playBeep();
+    this.triggerAttention();
     this.updateCounter();
+    this.saveTimerState();
   },
 
   cancelLog() {
+    if (!this.isAwaitingLog) return;
     const ok = window.confirm('Erase this log? This time will NOT be logged, NOT counted as work hours, and NOT billable. If you actually worked, please fill the note and click Send.');
     if (!ok) return;
 
-    this.resetAfterLog();
-    this.hideModal(this.elements.logModal);
-    this.clearLogError();
-    this.clearAttention();
+    this.completeCurrentPendingLog();
   },
 
   async submitLog() {
@@ -579,7 +699,7 @@ const App = {
       return;
     }
 
-    const timespan = this.validateLogTimespan({ updatePending: false });
+    const timespan = this.validateLogTimespan();
     if (!timespan) {
       return;
     }
@@ -597,10 +717,7 @@ const App = {
       this.toast('Log sent', 'success');
       this.addLogLocal(path, text);
 
-      this.resetAfterLog();
-      this.hideModal(this.elements.logModal);
-      this.clearLogError();
-      this.clearAttention();
+      this.completeCurrentPendingLog();
     } catch (err) {
       console.error(err);
       this.toast(`Failed to send: ${err.message}`, 'error');
@@ -608,20 +725,11 @@ const App = {
       this.isSavingLog = false;
       this.elements.registerLog.textContent = 'Send';
       if (this.isAwaitingLog) {
-        this.validateLogTimespan({ updatePending: false });
+        this.validateLogTimespan();
       } else {
         this.elements.registerLog.disabled = false;
       }
     }
-  },
-
-  resetAfterLog() {
-    this.isAwaitingLog = false;
-    this.elapsedMs = 0;
-    this.pendingMs = 0;
-    this.lastTick = Date.now();
-    this.updateCounter();
-    this.saveTimerState();
   },
 
   triggerAttention() {
@@ -683,9 +791,9 @@ const App = {
     return `${String(minutes).padStart(2, '0')}m${String(seconds).padStart(2, '0')}s`;
   },
 
-  populateLogTimespan(durationMs) {
-    const now = new Date();
-    const parts = Time.getZonedParts(now);
+  populateLogTimespan(durationMs, endAtMs = Date.now()) {
+    const endDate = new Date(endAtMs);
+    const parts = Time.getZonedParts(endDate);
     const totalMinutes = Math.max(1, Math.round((durationMs || 0) / 60000));
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
@@ -787,7 +895,7 @@ const App = {
     this.elements.logError.classList.add('hidden');
   },
 
-  validateLogTimespan({ updatePending = false } = {}) {
+  validateLogTimespan() {
     const result = this.getTimespanFromInputs();
     if (!result.valid) {
       this.setLogError(result.error);
@@ -809,10 +917,6 @@ const App = {
     this.clearLogError();
     if (!this.isSavingLog) {
       this.elements.registerLog.disabled = false;
-    }
-    if (updatePending) {
-      this.pendingMs = result.durationMs;
-      this.updateCounter();
     }
     return result;
   },
