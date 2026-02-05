@@ -99,6 +99,7 @@
               <span class="tab-separator">|</span>
               <button id="tab-timeline" class="tab-btn">Timeline</button>
             </div>
+            <div class="tz-indicator" title="Times shown in Sao Paulo (America/Sao_Paulo)">TZ: Sao Paulo</div>
           </div>
 
           <div id="logs-view" class="logs-view">
@@ -130,11 +131,31 @@
     </section>
   </div>
 
-  <div id="log-modal" class="modal hidden" aria-hidden="true">
+      <div id="log-modal" class="modal hidden" aria-hidden="true">
     <div class="modal-card">
       <div class="modal-header">
         <h2>What you're working on?</h2>
       </div>
+      <div class="log-fields">
+        <label class="log-field">
+          <span>Date</span>
+          <input id="log-date" type="date" />
+        </label>
+        <label class="log-field">
+          <span>End time</span>
+          <input id="log-time" type="time" step="60" />
+        </label>
+        <div class="log-field">
+          <span>Duration</span>
+          <div class="log-duration">
+            <input id="log-hours" type="number" min="0" step="1" />
+            <span>h</span>
+            <input id="log-minutes" type="number" min="0" max="59" step="1" />
+            <span>m</span>
+          </div>
+        </div>
+      </div>
+      <div id="log-error" class="log-error hidden"></div>
       <textarea id="log-text" rows="4" placeholder="e.g. debugging race condition on HVM's collapser.c"></textarea>
       <div class="modal-actions">
         <button id="cancel-log" class="danger">Erase</button>
@@ -164,6 +185,7 @@
   <div id="timeline-tooltip" class="timeline-tooltip hidden"></div>
 
   <script src="js/github.js"></script>
+  <script src="js/time.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -11,6 +11,7 @@ const App = {
 
   isPaused: false,
   isAwaitingLog: false,
+  isSavingLog: false,
   elapsedMs: 0,
   pendingMs: 0,
   lastTick: null,
@@ -100,6 +101,11 @@ const App = {
       timelineRows: document.getElementById('timeline-rows'),
       timelineTooltip: document.getElementById('timeline-tooltip'),
       logModal: document.getElementById('log-modal'),
+      logDate: document.getElementById('log-date'),
+      logTime: document.getElementById('log-time'),
+      logHours: document.getElementById('log-hours'),
+      logMinutes: document.getElementById('log-minutes'),
+      logError: document.getElementById('log-error'),
       logText: document.getElementById('log-text'),
       registerLog: document.getElementById('register-log'),
       cancelLog: document.getElementById('cancel-log'),
@@ -129,6 +135,12 @@ const App = {
 
     this.elements.logText.addEventListener('input', () => {
       localStorage.setItem('worklog_draft', this.elements.logText.value);
+    });
+
+    [this.elements.logDate, this.elements.logTime, this.elements.logHours, this.elements.logMinutes].forEach(input => {
+      if (!input) return;
+      input.addEventListener('input', () => this.validateLogTimespan({ updatePending: true }));
+      input.addEventListener('change', () => this.validateLogTimespan({ updatePending: true }));
     });
 
     this.elements.logText.addEventListener('keydown', (event) => {
@@ -533,6 +545,8 @@ const App = {
     this.pendingMs = durationMs;
     this.isAwaitingLog = true;
     this.showModal(this.elements.logModal);
+    this.populateLogTimespan(durationMs);
+    this.validateLogTimespan({ updatePending: true });
     this.playBeep();
     this.triggerAttention();
     this.saveTimerState();
@@ -546,11 +560,12 @@ const App = {
   },
 
   cancelLog() {
-    const ok = window.confirm('Erase this hour? These minutes will NOT be logged, NOT counted as work hours, and NOT billable. If you actually worked, please fill the note and click Send.');
+    const ok = window.confirm('Erase this log? This time will NOT be logged, NOT counted as work hours, and NOT billable. If you actually worked, please fill the note and click Send.');
     if (!ok) return;
 
     this.resetAfterLog();
     this.hideModal(this.elements.logModal);
+    this.clearLogError();
     this.clearAttention();
   },
 
@@ -564,28 +579,39 @@ const App = {
       return;
     }
 
+    const timespan = this.validateLogTimespan({ updatePending: false });
+    if (!timespan) {
+      return;
+    }
+
+    this.isSavingLog = true;
     this.elements.registerLog.disabled = true;
     this.elements.registerLog.textContent = 'Saving...';
 
     try {
-      const now = new Date();
-      const filename = this.buildFilename(now, this.user.login, this.pendingMs);
+      const filename = this.buildFilename(timespan.endDate, this.user.login, timespan.durationMs);
       const path = `logs/${filename}`;
 
       await GitHub.createLogFile(path, text);
       this.addPendingLog(path, text);
-      this.addLogLocal(path, text);
       this.toast('Log sent', 'success');
+      this.addLogLocal(path, text);
 
       this.resetAfterLog();
       this.hideModal(this.elements.logModal);
+      this.clearLogError();
       this.clearAttention();
     } catch (err) {
       console.error(err);
       this.toast(`Failed to send: ${err.message}`, 'error');
     } finally {
-      this.elements.registerLog.disabled = false;
+      this.isSavingLog = false;
       this.elements.registerLog.textContent = 'Send';
+      if (this.isAwaitingLog) {
+        this.validateLogTimespan({ updatePending: false });
+      } else {
+        this.elements.registerLog.disabled = false;
+      }
     }
   },
 
@@ -652,19 +678,154 @@ const App = {
 
   formatDuration(ms) {
     const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.min(60, Math.floor(totalSeconds / 60));
+    const minutes = Math.max(0, Math.floor(totalSeconds / 60));
     const seconds = totalSeconds % 60;
     return `${String(minutes).padStart(2, '0')}m${String(seconds).padStart(2, '0')}s`;
   },
 
+  populateLogTimespan(durationMs) {
+    const now = new Date();
+    const parts = Time.getZonedParts(now);
+    const totalMinutes = Math.max(1, Math.round((durationMs || 0) / 60000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+
+    if (this.elements.logDate) {
+      this.elements.logDate.value = Time.formatDateValue(parts);
+    }
+    if (this.elements.logTime) {
+      this.elements.logTime.value = Time.formatTimeValue(parts);
+    }
+    if (this.elements.logHours) {
+      this.elements.logHours.value = String(hours);
+    }
+    if (this.elements.logMinutes) {
+      this.elements.logMinutes.value = String(minutes);
+    }
+  },
+
+  getTimespanFromInputs() {
+    const dateValue = this.elements.logDate?.value;
+    const timeValue = this.elements.logTime?.value;
+    const hoursValue = this.elements.logHours?.value;
+    const minutesValue = this.elements.logMinutes?.value;
+
+    const dateParts = Time.parseDateValue(dateValue);
+    if (!dateParts) {
+      return { valid: false, error: 'Select a valid date.' };
+    }
+
+    const timeParts = Time.parseTimeValue(timeValue);
+    if (!timeParts) {
+      return { valid: false, error: 'Select a valid end time.' };
+    }
+
+    const hours = Number(hoursValue);
+    const minutes = Number(minutesValue);
+    if (!Number.isInteger(hours) || hours < 0) {
+      return { valid: false, error: 'Enter valid hours.' };
+    }
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+      return { valid: false, error: 'Minutes must be between 0 and 59.' };
+    }
+
+    const totalMinutes = hours * 60 + minutes;
+    if (totalMinutes <= 0) {
+      return { valid: false, error: 'Duration must be at least 1 minute.' };
+    }
+
+    const endDate = Time.zonedPartsToDate({
+      year: dateParts.year,
+      month: dateParts.month,
+      day: dateParts.day,
+      hour: timeParts.hour,
+      minute: timeParts.minute,
+      second: 0
+    });
+
+    const durationMs = totalMinutes * 60 * 1000;
+    const startDate = new Date(endDate.getTime() - durationMs);
+
+    return {
+      valid: true,
+      endDate,
+      startDate,
+      durationMs,
+      dateValue: Time.formatDateValue(dateParts),
+      timeValue: Time.formatTimeValue(timeParts)
+    };
+  },
+
+  findOverlap(startDate, endDate) {
+    if (!this.user || !this.user.login) return null;
+    const username = this.user.login;
+
+    for (const log of this.logsByPath.values()) {
+      if (log.username !== username) continue;
+      const end = log.dateObj || this.buildDate(log.date, log.time);
+      if (!end) continue;
+      if (!log.dateObj) log.dateObj = end;
+      const duration = log.durationMs || this.intervalMs;
+      const start = new Date(end.getTime() - duration);
+      if (startDate < end && endDate > start) {
+        return log;
+      }
+    }
+
+    return null;
+  },
+
+  setLogError(message) {
+    if (!this.elements.logError) return;
+    this.elements.logError.textContent = message;
+    this.elements.logError.classList.remove('hidden');
+  },
+
+  clearLogError() {
+    if (!this.elements.logError) return;
+    this.elements.logError.textContent = '';
+    this.elements.logError.classList.add('hidden');
+  },
+
+  validateLogTimespan({ updatePending = false } = {}) {
+    const result = this.getTimespanFromInputs();
+    if (!result.valid) {
+      this.setLogError(result.error);
+      if (!this.isSavingLog) {
+        this.elements.registerLog.disabled = true;
+      }
+      return null;
+    }
+
+    const overlap = this.findOverlap(result.startDate, result.endDate);
+    if (overlap) {
+      this.setLogError('This timespan overlaps an existing worklog from you.');
+      if (!this.isSavingLog) {
+        this.elements.registerLog.disabled = true;
+      }
+      return null;
+    }
+
+    this.clearLogError();
+    if (!this.isSavingLog) {
+      this.elements.registerLog.disabled = false;
+    }
+    if (updatePending) {
+      this.pendingMs = result.durationMs;
+      this.updateCounter();
+    }
+    return result;
+  },
+
   buildFilename(date, username, durationMs) {
     const pad = (num) => String(num).padStart(2, '0');
-    const year = date.getFullYear();
-    const month = pad(date.getMonth() + 1);
-    const day = pad(date.getDate());
-    const hour = pad(date.getHours());
-    const minute = pad(date.getMinutes());
-    const second = pad(date.getSeconds());
+    const parts = Time.getZonedParts(date);
+    const year = parts.year;
+    const month = pad(parts.month);
+    const day = pad(parts.day);
+    const hour = pad(parts.hour);
+    const minute = pad(parts.minute);
+    const second = pad(parts.second);
     const duration = this.formatDuration(durationMs || 0);
 
     return `${year}-${month}-${day}.${hour}h${minute}m${second}s.${duration}.${username}.txt`;
@@ -682,7 +843,7 @@ const App = {
     const username = parts.length >= 5 ? parts[3] : parts[2];
     const match = timeRaw.match(/(\d{2})h(\d{2})m(\d{2})s/);
     const time = match ? `${match[1]}:${match[2]}:${match[3]}` : timeRaw;
-    const durationMatch = durationRaw ? durationRaw.match(/(\d{2,3})m(\d{2})s/) : null;
+    const durationMatch = durationRaw ? durationRaw.match(/(\d{2,})m(\d{2})s/) : null;
     const duration = durationMatch ? durationRaw : null;
 
     return { date, time, duration, username };
@@ -977,9 +1138,10 @@ const App = {
   },
 
   formatPeriodLabel(date, scale) {
-    const year = date.getFullYear();
-    const month = this.months[date.getMonth()];
-    const day = String(date.getDate()).padStart(2, '0');
+    const parts = Time.getZonedParts(date);
+    const year = parts.year;
+    const month = this.months[parts.month - 1];
+    const day = String(parts.day).padStart(2, '0');
 
     if (scale === 'daily') {
       return `${year} ${month} ${day}`;
@@ -1085,14 +1247,17 @@ const App = {
   buildDate(dateStr, timeStr) {
     if (!dateStr || !timeStr) return null;
     const [year, month, day] = dateStr.split('-').map(Number);
-    const [hour, minute, second] = timeStr.split(':').map(Number);
+    const timeParts = timeStr.split(':');
+    const hour = Number(timeParts[0] || 0);
+    const minute = Number(timeParts[1] || 0);
+    const second = Number(timeParts[2] || 0);
     if (!year || !month || !day) return null;
-    return new Date(year, month - 1, day, hour || 0, minute || 0, second || 0);
+    return Time.zonedPartsToDate({ year, month, day, hour, minute, second });
   },
 
   parseDuration(duration) {
     if (!duration) return 0;
-    const match = duration.match(/(\d{2,3})m(\d{2})s/);
+    const match = duration.match(/(\d{2,})m(\d{2})s/);
     if (!match) return 0;
     const minutes = Number(match[1]);
     const seconds = Number(match[2]);
@@ -1159,20 +1324,22 @@ const App = {
   },
 
   startOfPeriod(date, scale) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
+    const parts = Time.getZonedParts(date);
+    let year = parts.year;
+    let month = parts.month;
+    let day = parts.day;
 
     if (scale === 'weekly') {
-      const day = d.getDay();
-      const diff = (day === 0 ? -6 : 1) - day;
-      d.setDate(d.getDate() + diff);
+      const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+      const diff = (weekday === 0 ? -6 : 1) - weekday;
+      day += diff;
     }
 
     if (scale === 'monthly') {
-      d.setDate(1);
+      day = 1;
     }
 
-    return d;
+    return Time.zonedPartsToDate({ year, month, day, hour: 0, minute: 0, second: 0 });
   },
 
   addPeriods(date, count, scale) {
@@ -1182,28 +1349,54 @@ const App = {
   },
 
   addDays(date, days) {
-    const d = new Date(date);
-    d.setDate(d.getDate() + days);
-    return d;
+    const parts = Time.getZonedParts(date);
+    const normalized = new Date(Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day + days,
+      parts.hour,
+      parts.minute,
+      parts.second
+    ));
+
+    return Time.zonedPartsToDate({
+      year: normalized.getUTCFullYear(),
+      month: normalized.getUTCMonth() + 1,
+      day: normalized.getUTCDate(),
+      hour: normalized.getUTCHours(),
+      minute: normalized.getUTCMinutes(),
+      second: normalized.getUTCSeconds()
+    });
   },
 
   addMonths(date, months) {
-    const d = new Date(date);
-    const day = d.getDate();
-    d.setDate(1);
-    d.setMonth(d.getMonth() + months);
-    const max = this.daysInMonth(d);
-    d.setDate(Math.min(day, max));
-    return d;
+    const parts = Time.getZonedParts(date);
+    const totalMonths = parts.year * 12 + (parts.month - 1) + months;
+    const year = Math.floor(totalMonths / 12);
+    const monthIndex = totalMonths - year * 12;
+    const month = monthIndex + 1;
+    const max = Time.daysInMonthParts(year, month);
+    const day = Math.min(parts.day, max);
+
+    return Time.zonedPartsToDate({
+      year,
+      month,
+      day,
+      hour: parts.hour,
+      minute: parts.minute,
+      second: parts.second
+    });
   },
 
   daysInMonth(date) {
-    const d = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-    return d.getDate();
+    const parts = Time.getZonedParts(date);
+    return Time.daysInMonthParts(parts.year, parts.month);
   },
 
   monthDiff(start, end) {
-    return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    const startParts = Time.getZonedParts(start);
+    const endParts = Time.getZonedParts(end);
+    return (endParts.year - startParts.year) * 12 + (endParts.month - startParts.month);
   },
 
   showTimelineTooltip(event, log) {

@@ -340,6 +340,16 @@ button.danger {
   border-bottom: 1px solid var(--line-soft);
 }
 
+.tz-indicator {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--muted);
+  border: 1px solid var(--line-soft);
+  background: #f8f8f8;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
 .tab-bar {
   display: inline-flex;
   gap: 8px;
@@ -624,6 +634,52 @@ button.danger {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.log-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.log-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.log-field input {
+  font-size: 0.8rem;
+  padding: 8px 10px;
+  min-width: 140px;
+}
+
+.log-duration {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.log-duration input {
+  width: 3.5rem;
+  text-align: center;
+  min-width: 0;
+  padding: 6px 8px;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.log-duration input::-webkit-outer-spin-button,
+.log-duration input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.log-error {
+  font-size: 0.8rem;
+  color: var(--danger);
 }
 
 .modal-actions {
