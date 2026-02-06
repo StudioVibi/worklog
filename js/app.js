@@ -8,6 +8,13 @@ const App = {
   logsVersion: 0,
   lastSavedTimer: null,
   lastCounterText: '',
+  todayHoursCache: {
+    date: null,
+    version: -1,
+    user: null,
+    intervalMs: null,
+    text: ''
+  },
 
   isPaused: false,
   isAwaitingLog: false,
@@ -84,6 +91,7 @@ const App = {
       pauseBtn: document.getElementById('pause-btn'),
       helpBtn: document.getElementById('help-btn'),
       counter: document.getElementById('counter'),
+      todayHours: document.getElementById('today-hours'),
       intervalInput: document.getElementById('interval-input'),
       userPill: document.getElementById('user-pill'),
       userAvatar: document.getElementById('user-avatar'),
@@ -406,6 +414,7 @@ const App = {
       }
     }
     this.updateCounter();
+    this.updateTodayHours();
     this.saveTimerState();
   },
 
@@ -557,6 +566,65 @@ const App = {
       this.elements.counter.textContent = text;
       this.lastCounterText = text;
     }
+  },
+
+  getTodayDateValue() {
+    const parts = Time.getZonedParts(new Date());
+    return Time.formatDateValue(parts);
+  },
+
+  formatHours(hours) {
+    if (!Number.isFinite(hours) || hours <= 0) return '0h';
+    const rounded = Math.round(hours * 10) / 10;
+    return rounded % 1 === 0 ? `${rounded.toFixed(0)}h` : `${rounded.toFixed(1)}h`;
+  },
+
+  updateTodayHours() {
+    const el = this.elements.todayHours;
+    if (!el) return;
+    if (!this.user || !this.user.login) {
+      el.textContent = 'Today: --';
+      el.title = 'Hours logged today (Sao Paulo)';
+      return;
+    }
+
+    const dateValue = this.getTodayDateValue();
+    const cache = this.todayHoursCache;
+    const login = this.user.login;
+    const version = this.logsVersion;
+    const intervalMs = this.intervalMs;
+
+    if (
+      cache.date === dateValue &&
+      cache.user === login &&
+      cache.version === version &&
+      cache.intervalMs === intervalMs
+    ) {
+      if (el.textContent !== cache.text) {
+        el.textContent = cache.text;
+      }
+      return;
+    }
+
+    let totalMs = 0;
+    for (const log of this.logsByPath.values()) {
+      if (log.username !== login) continue;
+      if (log.date !== dateValue) continue;
+      const durationMs = log.durationMs || this.intervalMs;
+      if (Number.isFinite(durationMs) && durationMs > 0) {
+        totalMs += durationMs;
+      }
+    }
+
+    const hours = totalMs / (60 * 60 * 1000);
+    const text = `Today: ${this.formatHours(hours)}`;
+    cache.date = dateValue;
+    cache.user = login;
+    cache.version = version;
+    cache.intervalMs = intervalMs;
+    cache.text = text;
+    el.textContent = text;
+    el.title = `Hours logged today (${dateValue}, Sao Paulo): ${text}`;
   },
 
   togglePause() {
@@ -1617,6 +1685,7 @@ const App = {
     const hasLogs = this.logsByPath.size > 0;
     this.elements.logLoading.classList.add('hidden');
     this.elements.logEmpty.classList.toggle('hidden', hasLogs);
+    this.updateTodayHours();
   },
 
   scrollToBottom() {

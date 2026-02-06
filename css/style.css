@@ -253,6 +253,11 @@ button.danger {
   align-items: center;
 }
 
+.today-hours {
+  cursor: default;
+  font-variant-numeric: tabular-nums;
+}
+
 .interval-control {
   display: inline-flex;
   align-items: center;
