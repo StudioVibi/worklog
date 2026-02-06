@@ -89,11 +89,11 @@ const Time = {
     let diff = this.diffPartsInMinutes(actual, normalized);
 
     if (diff !== 0) {
-      date = new Date(utcGuess - diff * 60 * 1000);
+      date = new Date(date.getTime() + diff * 60 * 1000);
       actual = this.getZonedParts(date, zone);
       diff = this.diffPartsInMinutes(actual, normalized);
       if (diff !== 0) {
-        date = new Date(utcGuess - diff * 60 * 1000);
+        date = new Date(date.getTime() + diff * 60 * 1000);
       }
     }
 
