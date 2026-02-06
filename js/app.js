@@ -110,6 +110,7 @@ const App = {
       timelineLabels: document.getElementById('timeline-labels'),
       timelineRows: document.getElementById('timeline-rows'),
       timelineTooltip: document.getElementById('timeline-tooltip'),
+      timelineTotal: document.getElementById('timeline-total'),
       logModal: document.getElementById('log-modal'),
       logDate: document.getElementById('log-date'),
       logTime: document.getElementById('log-time'),
@@ -415,6 +416,7 @@ const App = {
     }
     this.updateCounter();
     this.updateTodayHours();
+    this.updateTimelineTotal();
     this.saveTimerState();
   },
 
@@ -455,6 +457,7 @@ const App = {
     this.elements.timelineView.classList.remove('hidden');
     this.elements.tabLogs.classList.remove('active');
     this.elements.tabTimeline.classList.add('active');
+    this.updateTimelineTotal();
     requestAnimationFrame(() => {
       const today = new Date();
       const periodStart = this.startOfPeriod(today, this.timeline.scale);
@@ -568,6 +571,12 @@ const App = {
     }
   },
 
+  getPeriodRange(scale) {
+    const now = new Date();
+    const start = this.startOfPeriod(now, scale);
+    return { start, end: now };
+  },
+
   getTodayDateValue() {
     const parts = Time.getZonedParts(new Date());
     return Time.formatDateValue(parts);
@@ -577,6 +586,37 @@ const App = {
     if (!Number.isFinite(hours) || hours <= 0) return '0h';
     const rounded = Math.round(hours * 10) / 10;
     return rounded % 1 === 0 ? `${rounded.toFixed(0)}h` : `${rounded.toFixed(1)}h`;
+  },
+
+  computePeriodTotalMs(scale) {
+    if (!this.user || !this.user.login) return 0;
+
+    const { start, end } = this.getPeriodRange(scale);
+    const login = this.user.login;
+    let totalMs = 0;
+
+    for (const log of this.logsByPath.values()) {
+      if (log.username !== login) continue;
+      const endTime = log.dateObj || this.buildDate(log.date, log.time);
+      if (!endTime) continue;
+      if (!log.dateObj) {
+        log.dateObj = endTime;
+      }
+      const durationMs = log.durationMs || this.intervalMs;
+      if (!Number.isFinite(durationMs) || durationMs <= 0) continue;
+      const startTime = new Date(endTime.getTime() - durationMs);
+
+      if (endTime <= start || startTime >= end) continue;
+
+      const overlapStart = startTime < start ? start : startTime;
+      const overlapEnd = endTime > end ? end : endTime;
+      const overlap = overlapEnd - overlapStart;
+      if (overlap > 0) {
+        totalMs += overlap;
+      }
+    }
+
+    return totalMs;
   },
 
   updateTodayHours() {
@@ -606,16 +646,7 @@ const App = {
       return;
     }
 
-    let totalMs = 0;
-    for (const log of this.logsByPath.values()) {
-      if (log.username !== login) continue;
-      if (log.date !== dateValue) continue;
-      const durationMs = log.durationMs || this.intervalMs;
-      if (Number.isFinite(durationMs) && durationMs > 0) {
-        totalMs += durationMs;
-      }
-    }
-
+    const totalMs = this.computePeriodTotalMs('daily');
     const hours = totalMs / (60 * 60 * 1000);
     const text = `Today: ${this.formatHours(hours)}`;
     cache.date = dateValue;
@@ -625,6 +656,34 @@ const App = {
     cache.text = text;
     el.textContent = text;
     el.title = `Hours logged today (${dateValue}, Sao Paulo): ${text}`;
+  },
+
+  getPeriodLabel(scale) {
+    if (scale === 'weekly') return 'This week';
+    if (scale === 'monthly') return 'This month';
+    return 'Today';
+  },
+
+  updateTimelineTotal() {
+    const el = this.elements.timelineTotal;
+    if (!el) return;
+    if (!this.user || !this.user.login) {
+      el.textContent = 'Total: --';
+      el.title = 'Total logged for selected period';
+      return;
+    }
+
+    const scale = this.timeline.scale || 'daily';
+    const label = this.getPeriodLabel(scale);
+    const { start, end } = this.getPeriodRange(scale);
+    const totalMs = this.computePeriodTotalMs(scale);
+    const hours = totalMs / (60 * 60 * 1000);
+    const text = `${label}: ${this.formatHours(hours)}`;
+    const startValue = Time.formatDateValue(Time.getZonedParts(start));
+    const endValue = Time.formatDateValue(Time.getZonedParts(end));
+
+    el.textContent = text;
+    el.title = `Total logged for ${label.toLowerCase()} (${startValue} → ${endValue}, Sao Paulo): ${text}`;
   },
 
   togglePause() {
@@ -1242,6 +1301,7 @@ const App = {
     this.ensureTimelineSized(periodStart, 'left');
     this.positionTimelineOnDate(periodStart, 'left');
     this.renderTimeline();
+    this.updateTimelineTotal();
   },
 
   handleTimelineScroll() {
@@ -1686,6 +1746,7 @@ const App = {
     this.elements.logLoading.classList.add('hidden');
     this.elements.logEmpty.classList.toggle('hidden', hasLogs);
     this.updateTodayHours();
+    this.updateTimelineTotal();
   },
 
   scrollToBottom() {

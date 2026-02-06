@@ -472,6 +472,12 @@ button.danger {
   gap: 6px;
 }
 
+.timeline-total {
+  margin-left: auto;
+  cursor: default;
+  font-variant-numeric: tabular-nums;
+}
+
 .scale-btn {
   border: 1px solid var(--line);
   background: #fff;
