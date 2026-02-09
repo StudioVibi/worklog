@@ -6,6 +6,8 @@ const App = {
   renderedPaths: [],
   renderedPathSet: new Set(),
   logsVersion: 0,
+  cacheInitPromise: null,
+  cacheEnabled: true,
   lastSavedTimer: null,
   lastCounterText: '',
   todayHoursCache: {
@@ -343,6 +345,94 @@ const App = {
     localStorage.setItem(this.storage.lastSeen, sha);
   },
 
+  async ensureCacheReady() {
+    if (!this.cacheEnabled) return false;
+    if (!this.cacheInitPromise) {
+      if (typeof window === 'undefined' || !window.LogCache || !LogCache.isSupported()) {
+        this.cacheEnabled = false;
+        return false;
+      }
+
+      this.cacheInitPromise = LogCache.open().catch(err => {
+        console.warn('IndexedDB cache unavailable', err);
+        this.cacheEnabled = false;
+        return null;
+      });
+    }
+
+    const db = await this.cacheInitPromise;
+    return !!db;
+  },
+
+  serializeLogForCache(log) {
+    return {
+      path: log.path,
+      text: String(log.text || '')
+    };
+  },
+
+  deserializeCacheLog(entry) {
+    if (!entry || !entry.path) return null;
+    const parsed = this.parseLogPath(entry.path);
+    if (!parsed) return null;
+    return this.buildLogEntry(entry.path, parsed, entry.text || '');
+  },
+
+  async loadLogsFromCache() {
+    if (!(await this.ensureCacheReady())) return false;
+
+    try {
+      const cached = await LogCache.getAllLogs();
+      if (!Array.isArray(cached) || cached.length === 0) {
+        return false;
+      }
+
+      this.logsByPath.clear();
+      this.renderedPaths = [];
+      this.renderedPathSet = new Set();
+
+      let loaded = 0;
+      for (const item of cached) {
+        const log = this.deserializeCacheLog(item);
+        if (!log) continue;
+        this.logsByPath.set(log.path, log);
+        loaded += 1;
+      }
+
+      if (loaded === 0) {
+        return false;
+      }
+
+      this.logsVersion += loaded;
+      this.renderLogs();
+      return true;
+    } catch (err) {
+      console.warn('Failed to read cached logs', err);
+      return false;
+    }
+  },
+
+  async saveLogsToCache(logs, { replace = false } = {}) {
+    if (!(await this.ensureCacheReady())) return;
+    const items = (logs || [])
+      .map(log => this.serializeLogForCache(log))
+      .filter(item => item && item.path);
+
+    try {
+      if (replace) {
+        await LogCache.replaceAllLogs(items);
+      } else if (items.length > 0) {
+        await LogCache.putLogs(items);
+      }
+    } catch (err) {
+      console.warn('Failed to update cached logs', err);
+    }
+  },
+
+  async syncCacheFromMemory() {
+    await this.saveLogsToCache(Array.from(this.logsByPath.values()), { replace: true });
+  },
+
   loadPendingLogs() {
     const raw = localStorage.getItem(this.storage.pendingLogs);
     if (!raw) return {};
@@ -367,6 +457,7 @@ const App = {
   mergePendingLogs() {
     const pending = this.loadPendingLogs();
     let changed = false;
+    const addedLogs = [];
     const now = Date.now();
     const expiryMs = 2 * 60 * 60 * 1000;
 
@@ -390,13 +481,17 @@ const App = {
         continue;
       }
 
-      this.logsByPath.set(path, this.buildLogEntry(path, parsed, entry.text));
+      const log = this.buildLogEntry(path, parsed, entry.text);
+      this.logsByPath.set(path, log);
+      addedLogs.push(log);
       this.logsVersion += 1;
     }
 
     if (changed) {
       this.savePendingLogs(pending);
     }
+
+    return addedLogs;
   },
 
   updateInterval() {
@@ -440,9 +535,10 @@ const App = {
     this.elements.mainScreen.classList.remove('hidden');
 
     this.startTimer();
-    await this.loadLogs();
+    await this.loadLogsFromCache();
     this.initTimeline();
     this.startPolling();
+    this.loadLogs();
   },
 
   showLogsTab() {
@@ -1084,10 +1180,12 @@ const App = {
     const parsed = this.parseLogPath(path);
     if (!parsed) return;
 
-    this.logsByPath.set(path, this.buildLogEntry(path, parsed, text));
+    const log = this.buildLogEntry(path, parsed, text);
+    this.logsByPath.set(path, log);
     this.logsVersion += 1;
 
     this.renderLogs();
+    this.saveLogsToCache([log]);
   },
 
   buildLogEntry(path, parsed, text) {
@@ -1115,6 +1213,7 @@ const App = {
         this.logsByPath.clear();
         this.lastSeenSha = null;
         this.updateLogUI();
+        await this.saveLogsToCache([], { replace: true });
         return;
       }
 
@@ -1142,6 +1241,7 @@ const App = {
     this.mergePendingLogs();
     this.saveLastSeen(headSha);
     this.renderLogs();
+    await this.syncCacheFromMemory();
   },
 
   async loadIncrementalLogs(headSha) {
@@ -1184,10 +1284,11 @@ const App = {
       return;
     }
 
-    await this.storeEntries(files, { skipExisting: true });
-    this.mergePendingLogs();
+    const remoteAdded = await this.storeEntries(files, { skipExisting: true });
+    const pendingAdded = this.mergePendingLogs();
     this.saveLastSeen(headSha);
     this.renderLogs();
+    await this.saveLogsToCache([...remoteAdded, ...pendingAdded]);
   },
 
   async storeEntries(entries, { skipExisting }) {
@@ -1196,11 +1297,12 @@ const App = {
       : entries;
 
     if (targets.length === 0) {
-      return;
+      return [];
     }
 
     const batchSize = 10;
     let added = 0;
+    const addedLogs = [];
     for (let i = 0; i < targets.length; i += batchSize) {
       const batch = targets.slice(i, i + batchSize);
       const contents = await Promise.all(batch.map(item => GitHub.getBlobContent(item.sha)));
@@ -1208,7 +1310,9 @@ const App = {
       batch.forEach((entry, index) => {
         const parsed = this.parseLogPath(entry.path);
         if (!parsed) return;
-        this.logsByPath.set(entry.path, this.buildLogEntry(entry.path, parsed, contents[index]));
+        const log = this.buildLogEntry(entry.path, parsed, contents[index]);
+        this.logsByPath.set(entry.path, log);
+        addedLogs.push(log);
         added += 1;
       });
     }
@@ -1216,6 +1320,8 @@ const App = {
     if (added > 0) {
       this.logsVersion += added;
     }
+
+    return addedLogs;
   },
 
   initTimeline() {
