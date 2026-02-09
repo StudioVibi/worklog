@@ -25,6 +25,8 @@ const App = {
   pendingMs: 0,
   pendingLogQueue: [],
   activePendingLog: null,
+  logTimespanBaseline: null,
+  logTimespanEdited: false,
   lastTick: null,
   timerInterval: null,
   pollInterval: null,
@@ -153,8 +155,14 @@ const App = {
 
     [this.elements.logDate, this.elements.logTime, this.elements.logHours, this.elements.logMinutes].forEach(input => {
       if (!input) return;
-      input.addEventListener('input', () => this.validateLogTimespan());
-      input.addEventListener('change', () => this.validateLogTimespan());
+      input.addEventListener('input', () => {
+        this.logTimespanEdited = true;
+        this.validateLogTimespan();
+      });
+      input.addEventListener('change', () => {
+        this.logTimespanEdited = true;
+        this.validateLogTimespan();
+      });
     });
 
     this.elements.logText.addEventListener('keydown', (event) => {
@@ -819,6 +827,8 @@ const App = {
     const current = this.pendingLogQueue[0] || null;
     if (!current) {
       this.activePendingLog = null;
+      this.logTimespanBaseline = null;
+      this.logTimespanEdited = false;
       this.clearPendingLogMeta();
       this.hideModal(this.elements.logModal);
       return;
@@ -841,6 +851,8 @@ const App = {
       this.pendingLogQueue.shift();
     }
     this.activePendingLog = null;
+    this.logTimespanBaseline = null;
+    this.logTimespanEdited = false;
     this.syncPendingQueueState();
     this.showPendingLogModal();
 
@@ -1017,22 +1029,37 @@ const App = {
   populateLogTimespan(durationMs, endAtMs = Date.now()) {
     const endDate = new Date(endAtMs);
     const parts = Time.getZonedParts(endDate);
-    const totalMinutes = Math.max(1, Math.round((durationMs || 0) / 60000));
+    const normalizedDurationMs = Math.max(60 * 1000, Math.floor(durationMs || 0));
+    const totalMinutes = Math.max(1, Math.round(normalizedDurationMs / 60000));
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
+    const dateValue = Time.formatDateValue(parts);
+    const timeValue = Time.formatTimeValue(parts);
+    const hoursValue = String(hours);
+    const minutesValue = String(minutes);
 
     if (this.elements.logDate) {
-      this.elements.logDate.value = Time.formatDateValue(parts);
+      this.elements.logDate.value = dateValue;
     }
     if (this.elements.logTime) {
-      this.elements.logTime.value = Time.formatTimeValue(parts);
+      this.elements.logTime.value = timeValue;
     }
     if (this.elements.logHours) {
-      this.elements.logHours.value = String(hours);
+      this.elements.logHours.value = hoursValue;
     }
     if (this.elements.logMinutes) {
-      this.elements.logMinutes.value = String(minutes);
+      this.elements.logMinutes.value = minutesValue;
     }
+
+    this.logTimespanBaseline = {
+      dateValue,
+      timeValue,
+      hoursValue,
+      minutesValue,
+      durationMs: normalizedDurationMs,
+      endAtMs: Math.floor(endAtMs)
+    };
+    this.logTimespanEdited = false;
   },
 
   getTimespanFromInputs() {
@@ -1063,6 +1090,30 @@ const App = {
     const totalMinutes = hours * 60 + minutes;
     if (totalMinutes <= 0) {
       return { valid: false, error: 'Duration must be at least 1 minute.' };
+    }
+
+    const baseline = this.logTimespanBaseline;
+    const useBaselineSeconds =
+      !this.logTimespanEdited &&
+      !!baseline &&
+      baseline.dateValue === dateValue &&
+      baseline.timeValue === timeValue &&
+      baseline.hoursValue === String(hours) &&
+      baseline.minutesValue === String(minutes);
+
+    if (useBaselineSeconds) {
+      const endDate = new Date(baseline.endAtMs);
+      const durationMs = baseline.durationMs;
+      const startDate = new Date(endDate.getTime() - durationMs);
+
+      return {
+        valid: true,
+        endDate,
+        startDate,
+        durationMs,
+        dateValue: baseline.dateValue,
+        timeValue: baseline.timeValue
+      };
     }
 
     const endDate = Time.zonedPartsToDate({
