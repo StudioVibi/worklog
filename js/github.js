@@ -55,6 +55,31 @@ const GitHub = {
       const error = await response.json().catch(() => ({}));
       const err = new Error(error.message || `API error: ${response.status}`);
       err.status = response.status;
+
+      const retryAfter = Number(response.headers.get('Retry-After'));
+      if (Number.isFinite(retryAfter) && retryAfter > 0) {
+        err.retryAfterMs = retryAfter * 1000;
+      }
+
+      const remaining = Number(response.headers.get('X-RateLimit-Remaining'));
+      if (Number.isFinite(remaining)) {
+        err.rateLimitRemaining = remaining;
+      }
+
+      const resetEpoch = Number(response.headers.get('X-RateLimit-Reset'));
+      if (Number.isFinite(resetEpoch) && resetEpoch > 0) {
+        err.rateLimitResetMs = Math.max(0, resetEpoch * 1000 - Date.now());
+      }
+
+      const message = String(err.message || '').toLowerCase();
+      err.isThrottle =
+        err.status === 429 ||
+        message.includes('temporarily being throttled') ||
+        message.includes('secondary rate limit') ||
+        message.includes('abuse detection') ||
+        (err.status === 403 && message.includes('rate limit')) ||
+        (err.status === 403 && err.rateLimitRemaining === 0);
+
       throw err;
     }
 

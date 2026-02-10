@@ -30,6 +30,11 @@ const App = {
   lastTick: null,
   timerInterval: null,
   pollInterval: null,
+  pollBaseMs: 30 * 1000,
+  pollJitterMs: 5 * 1000,
+  pollBackoffMs: 0,
+  pollBackoffUntilMs: 0,
+  lastThrottleToastAtMs: 0,
 
   user: null,
   audioCtx: null,
@@ -197,6 +202,7 @@ const App = {
         this.scheduleTimelineRender({ grid: true, rows: true });
       }
     });
+    document.addEventListener('visibilitychange', () => this.handleVisibilityChange());
 
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {});
@@ -208,6 +214,22 @@ const App = {
     if (!target) return false;
     const tag = target.tagName;
     return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable;
+  },
+
+  isPageVisible() {
+    return typeof document === 'undefined' || document.visibilityState === 'visible';
+  },
+
+  handleVisibilityChange() {
+    if (!this.user) return;
+
+    if (!this.isPageVisible()) {
+      if (this.pollInterval) clearTimeout(this.pollInterval);
+      this.pollInterval = null;
+      return;
+    }
+
+    this.scheduleNextPoll(250);
   },
 
   setupAudioUnlock() {
@@ -643,7 +665,7 @@ const App = {
 
   stopTimers() {
     if (this.timerInterval) clearInterval(this.timerInterval);
-    if (this.pollInterval) clearInterval(this.pollInterval);
+    if (this.pollInterval) clearTimeout(this.pollInterval);
     this.timerInterval = null;
     this.pollInterval = null;
   },
@@ -1251,8 +1273,9 @@ const App = {
   },
 
   async loadLogs(forceFull = false) {
-    if (this.isLoadingLogs) return;
+    if (this.isLoadingLogs) return false;
     this.isLoadingLogs = true;
+    let loaded = false;
 
     try {
       if (this.logsByPath.size === 0) {
@@ -1265,22 +1288,73 @@ const App = {
         this.lastSeenSha = null;
         this.updateLogUI();
         await this.saveLogsToCache([], { replace: true });
-        return;
+        loaded = true;
+        return true;
       }
 
       if (forceFull || !this.lastSeenSha || this.logsByPath.size === 0) {
         await this.loadAllLogs(headSha);
-        return;
+        loaded = true;
+        return true;
       }
 
       await this.loadIncrementalLogs(headSha);
+      loaded = true;
+      return true;
     } catch (err) {
-      console.error(err);
-      this.toast(`Failed to load logs: ${err.message}`, 'error');
-      this.updateLogUI();
+      this.handleLoadLogsError(err);
+      return false;
     } finally {
+      if (loaded) {
+        this.resetPollBackoff();
+      }
       this.isLoadingLogs = false;
     }
+  },
+
+  handleLoadLogsError(err) {
+    console.error(err);
+    if (this.applyPollBackoff(err)) {
+      const now = Date.now();
+      if (this.user && this.isPageVisible()) {
+        this.scheduleNextPoll();
+      }
+      if (now - this.lastThrottleToastAtMs > 15000) {
+        const waitMs = Math.max(0, this.pollBackoffUntilMs - now);
+        const waitSeconds = Math.max(1, Math.ceil(waitMs / 1000));
+        this.toast(`GitHub is throttling requests. Retrying in ~${waitSeconds}s.`, 'error');
+        this.lastThrottleToastAtMs = now;
+      }
+    } else {
+      this.toast(`Failed to load logs: ${err.message}`, 'error');
+    }
+    this.updateLogUI();
+  },
+
+  applyPollBackoff(err) {
+    if (!err || !err.isThrottle) return false;
+
+    const now = Date.now();
+    let backoffMs = 0;
+
+    if (Number.isFinite(err.retryAfterMs) && err.retryAfterMs > 0) {
+      backoffMs = err.retryAfterMs;
+    } else if (Number.isFinite(err.rateLimitResetMs) && err.rateLimitResetMs > 0) {
+      backoffMs = err.rateLimitResetMs + 1000;
+    } else {
+      const previous = this.pollBackoffMs > 0 ? this.pollBackoffMs : this.pollBaseMs;
+      backoffMs = Math.min(previous * 2, 10 * 60 * 1000);
+    }
+
+    backoffMs = Math.max(this.pollBaseMs, Math.floor(backoffMs));
+    this.pollBackoffMs = backoffMs;
+    this.pollBackoffUntilMs = Math.max(this.pollBackoffUntilMs, now + backoffMs);
+    return true;
+  },
+
+  resetPollBackoff() {
+    this.pollBackoffMs = 0;
+    this.pollBackoffUntilMs = 0;
   },
 
   async loadAllLogs(headSha) {
@@ -1351,7 +1425,7 @@ const App = {
       return [];
     }
 
-    const batchSize = 10;
+    const batchSize = 5;
     let added = 0;
     const addedLogs = [];
     for (let i = 0; i < targets.length; i += batchSize) {
@@ -1911,8 +1985,35 @@ const App = {
     this.elements.logContainer.scrollTop = this.elements.logContainer.scrollHeight;
   },
 
+  getNextPollDelayMs() {
+    const jitter = this.pollJitterMs > 0 ? Math.floor(Math.random() * this.pollJitterMs) : 0;
+    const baseDelay = this.pollBaseMs + jitter;
+    const backoffDelay = Math.max(0, this.pollBackoffUntilMs - Date.now());
+    return Math.max(baseDelay, backoffDelay);
+  },
+
+  scheduleNextPoll(delayOverrideMs = null) {
+    if (this.pollInterval) clearTimeout(this.pollInterval);
+    this.pollInterval = null;
+
+    if (!this.user || !this.isPageVisible()) {
+      return;
+    }
+
+    const delay = delayOverrideMs == null
+      ? this.getNextPollDelayMs()
+      : Math.max(delayOverrideMs, Math.max(0, this.pollBackoffUntilMs - Date.now()));
+
+    this.pollInterval = setTimeout(async () => {
+      this.pollInterval = null;
+      if (!this.user || !this.isPageVisible()) return;
+      await this.loadLogs();
+      this.scheduleNextPoll();
+    }, delay);
+  },
+
   startPolling() {
-    this.pollInterval = setInterval(() => this.loadLogs(), 5000);
+    this.scheduleNextPoll();
   },
 
   playBeep() {
