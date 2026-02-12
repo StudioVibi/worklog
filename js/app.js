@@ -81,8 +81,7 @@ const App = {
 
     if (GitHub.init()) {
       this.showMainScreen().catch(err => {
-        console.error('Token invalid:', err);
-        GitHub.logout();
+        console.error('Session restore failed:', err);
         this.showLoginScreen();
       });
     } else {
@@ -95,7 +94,6 @@ const App = {
       loginScreen: document.getElementById('login-screen'),
       mainScreen: document.getElementById('main-screen'),
       loginBtn: document.getElementById('login-btn'),
-      patInput: document.getElementById('pat-input'),
       logoutBtn: document.getElementById('logout-btn'),
       pauseBtn: document.getElementById('pause-btn'),
       helpBtn: document.getElementById('help-btn'),
@@ -603,34 +601,14 @@ const App = {
   },
 
   async login() {
-    const token = this.elements.patInput.value.trim();
-
-    if (!token) {
-      this.toast('Paste your token above', 'error');
-      return;
-    }
-
-    try {
-      this.elements.loginBtn.disabled = true;
-      this.elements.loginBtn.textContent = 'Validating...';
-
-      await GitHub.validateToken(token);
-      GitHub.setToken(token);
-
-      this.toast('Signed in!', 'success');
-      await this.showMainScreen();
-    } catch (err) {
-      console.error(err);
-      this.toast('Token invalid or missing permissions', 'error');
-    } finally {
-      this.elements.loginBtn.disabled = false;
-      this.elements.loginBtn.textContent = 'Sign in';
-    }
+    this.elements.loginBtn.disabled = true;
+    this.elements.loginBtn.textContent = 'Redirecting...';
+    GitHub.beginLogin();
   },
 
-  logout() {
+  async logout() {
     this.stopTimers();
-    GitHub.logout();
+    await GitHub.logout();
     this.logsByPath.clear();
     this.elements.logList.innerHTML = '';
     this.renderedPaths = [];
@@ -966,13 +944,34 @@ const App = {
     this.elements.registerLog.textContent = 'Saving...';
 
     try {
-      const filename = this.buildFilename(timespan.endDate, this.user.login, timespan.durationMs);
-      const path = `logs/${filename}`;
+      const saved = await GitHub.createLog({
+        text,
+        userLogin: this.user.login,
+        startAt: timespan.startDate.toISOString(),
+        endAt: timespan.endDate.toISOString(),
+        durationMs: timespan.durationMs,
+        timezone: Time.getTimeZone()
+      });
 
-      await GitHub.createLogFile(path, text);
-      this.addPendingLog(path, text);
       this.toast('Log sent', 'success');
-      this.addLogLocal(path, text);
+      if (saved && saved.path) {
+        this.addLogLocal(saved.path, saved.text || text);
+        const log = this.logsByPath.get(saved.path);
+        if (log) {
+          if (saved.endAt) {
+            const endDate = new Date(saved.endAt);
+            if (!Number.isNaN(endDate.getTime())) {
+              log.dateObj = endDate;
+            }
+          }
+          if (Number.isFinite(saved.durationMs) && saved.durationMs > 0) {
+            log.durationMs = saved.durationMs;
+            log.duration = this.formatDuration(saved.durationMs);
+          }
+        }
+      } else {
+        await this.loadLogs(true);
+      }
 
       this.completeCurrentPendingLog();
     } catch (err) {
@@ -1282,23 +1281,60 @@ const App = {
         this.elements.logLoading.classList.remove('hidden');
       }
 
-      const headSha = await GitHub.getHeadCommitSha();
-      if (!headSha) {
-        this.logsByPath.clear();
-        this.lastSeenSha = null;
+      const response = await GitHub.listLogs({ limit: 10000 });
+      const records = Array.isArray(response?.logs) ? response.logs : [];
+      const nextLogs = new Map();
+      let changed = forceFull || records.length !== this.logsByPath.size;
+
+      for (const record of records) {
+        const path = record.path;
+        if (!path) continue;
+
+        const parsed = this.parseLogPath(path);
+        if (!parsed) continue;
+
+        const current = this.logsByPath.get(path);
+        const sameText = current && current.text === String(record.text || '');
+        const sameDuration = current && current.durationMs === Number(record.durationMs || 0);
+
+        if (!sameText || !sameDuration) {
+          changed = true;
+        }
+
+        const log = this.buildLogEntry(path, parsed, record.text || '');
+
+        if (record.endAt) {
+          const endDate = new Date(record.endAt);
+          if (!Number.isNaN(endDate.getTime())) {
+            log.dateObj = endDate;
+          }
+        }
+
+        if (Number.isFinite(record.durationMs) && record.durationMs > 0) {
+          log.durationMs = Number(record.durationMs);
+          log.duration = this.formatDuration(log.durationMs);
+        }
+
+        nextLogs.set(path, log);
+      }
+
+      this.logsByPath = nextLogs;
+      this.renderedPathSet.forEach((path) => {
+        if (!nextLogs.has(path)) {
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        this.logsVersion += 1;
+        this.renderedPaths = [];
+        this.renderedPathSet = new Set();
+        this.renderLogs();
+        await this.syncCacheFromMemory();
+      } else {
         this.updateLogUI();
-        await this.saveLogsToCache([], { replace: true });
-        loaded = true;
-        return true;
       }
 
-      if (forceFull || !this.lastSeenSha || this.logsByPath.size === 0) {
-        await this.loadAllLogs(headSha);
-        loaded = true;
-        return true;
-      }
-
-      await this.loadIncrementalLogs(headSha);
       loaded = true;
       return true;
     } catch (err) {
@@ -1322,7 +1358,7 @@ const App = {
       if (now - this.lastThrottleToastAtMs > 15000) {
         const waitMs = Math.max(0, this.pollBackoffUntilMs - now);
         const waitSeconds = Math.max(1, Math.ceil(waitMs / 1000));
-        this.toast(`GitHub is throttling requests. Retrying in ~${waitSeconds}s.`, 'error');
+        this.toast(`Server is throttling requests. Retrying in ~${waitSeconds}s.`, 'error');
         this.lastThrottleToastAtMs = now;
       }
     } else {

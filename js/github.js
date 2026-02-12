@@ -1,59 +1,84 @@
-// GitHub API helpers for Worklog
+// Backend auth + API helpers for Worklog
 const GitHub = {
   owner: 'StudioVibi',
   repo: 'worklogs',
 
-  token: null,
-  tokenKey: null,
   user: null,
-  repoInfo: null,
+  apiBase: null,
 
   init() {
-    const keys = ['worklog_github_token', 'github_token'];
-    for (const key of keys) {
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        this.token = saved;
-        this.tokenKey = key;
-        return true;
-      }
-    }
-    return false;
+    // Always attempt session restore through /v1/auth/me.
+    return true;
   },
 
-  setToken(token) {
-    this.token = token;
-    this.tokenKey = 'worklog_github_token';
-    localStorage.setItem('worklog_github_token', token);
+  getApiBase() {
+    if (this.apiBase !== null) {
+      return this.apiBase;
+    }
+
+    const fromWindow = typeof window !== 'undefined' ? window.WORKLOG_API_BASE : '';
+    const fromMeta = typeof document !== 'undefined'
+      ? (document.querySelector('meta[name="worklog-api-base"]')?.getAttribute('content') || '')
+      : '';
+    const fromStorage = localStorage.getItem('worklog_api_base') || '';
+
+    const picked = String(fromWindow || fromMeta || fromStorage || '').trim();
+    this.apiBase = picked.replace(/\/$/, '');
+    return this.apiBase;
   },
 
-  logout() {
-    if (this.tokenKey === 'worklog_github_token') {
-      localStorage.removeItem('worklog_github_token');
+  buildApiUrl(endpoint) {
+    const base = this.getApiBase();
+    if (!base) return endpoint;
+    if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) return endpoint;
+    return `${base}${endpoint}`;
+  },
+
+  beginLogin() {
+    window.location.href = this.buildApiUrl('/v1/auth/login');
+  },
+
+  async logout() {
+    try {
+      await this.backend('/v1/auth/logout', {
+        method: 'POST'
+      });
+    } catch (err) {
+      // best-effort logout
     }
-    this.token = null;
-    this.tokenKey = null;
+
     this.user = null;
-    this.repoInfo = null;
   },
 
-  async api(endpoint, options = {}) {
-    const url = endpoint.startsWith('https://')
-      ? endpoint
-      : `https://api.github.com${endpoint}`;
+  async backend(endpoint, options = {}) {
+    const headers = {
+      ...(options.headers || {})
+    };
 
-    const response = await fetch(url, {
+    const hasBody = options.body !== undefined && options.body !== null;
+    if (hasBody && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    const response = await fetch(this.buildApiUrl(endpoint), {
       ...options,
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-        'Accept': 'application/vnd.github.v3+json',
-        ...options.headers
-      }
+      headers,
+      credentials: 'include'
     });
 
+    let payload = null;
+    const contentType = response.headers.get('content-type') || '';
+    if (response.status !== 204) {
+      if (contentType.includes('application/json')) {
+        payload = await response.json().catch(() => null);
+      } else {
+        const text = await response.text().catch(() => '');
+        payload = text ? { error: text } : null;
+      }
+    }
+
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      const err = new Error(error.message || `API error: ${response.status}`);
+      const err = new Error(payload?.error || payload?.message || `API error: ${response.status}`);
       err.status = response.status;
 
       const retryAfter = Number(response.headers.get('Retry-After'));
@@ -74,97 +99,84 @@ const GitHub = {
       const message = String(err.message || '').toLowerCase();
       err.isThrottle =
         err.status === 429 ||
-        message.includes('temporarily being throttled') ||
-        message.includes('secondary rate limit') ||
+        message.includes('throttle') ||
+        message.includes('rate limit') ||
         message.includes('abuse detection') ||
-        (err.status === 403 && message.includes('rate limit')) ||
         (err.status === 403 && err.rateLimitRemaining === 0);
 
       throw err;
     }
 
-    return await response.json();
-  },
-
-  async validateToken(token) {
-    const response = await fetch('https://api.github.com/user', {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github.v3+json'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error('Invalid token');
-    }
-
-    return await response.json();
+    return payload;
   },
 
   async getUser() {
     if (this.user) return this.user;
-    this.user = await this.api('/user');
+    this.user = await this.backend('/v1/auth/me');
     return this.user;
   },
 
-  async getRepoInfo() {
-    if (this.repoInfo) return this.repoInfo;
-    this.repoInfo = await this.api(`/repos/${this.owner}/${this.repo}`);
-    return this.repoInfo;
+  async listLogs(params = {}) {
+    const search = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === null || value === undefined || value === '') return;
+      search.set(key, String(value));
+    });
+
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return await this.backend(`/v1/logs${suffix}`);
   },
 
-  async createLogFile(path, content) {
-    const encoded = btoa(unescape(encodeURIComponent(content)));
-    return await this.api(`/repos/${this.owner}/${this.repo}/contents/${path}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        message: `worklog: ${path}`,
-        content: encoded
-      })
+  async createLog({ idempotencyKey, ...payload }) {
+    const headers = {};
+    if (idempotencyKey) {
+      headers['Idempotency-Key'] = idempotencyKey;
+    }
+
+    return await this.backend('/v1/logs', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
     });
   },
 
-  async listLogTree() {
-    try {
-      const repoInfo = await this.getRepoInfo();
-      const branch = repoInfo.default_branch || 'main';
-      const tree = await this.api(`/repos/${this.owner}/${this.repo}/git/trees/${branch}?recursive=1`);
-      if (!tree.tree) return [];
-      return tree.tree.filter(entry => entry.type === 'blob' && entry.path.startsWith('logs/'));
-    } catch (err) {
-      if (err.status === 404) {
-        return [];
-      }
-      if (String(err.message).toLowerCase().includes('not found')) {
-        return [];
-      }
-      throw err;
-    }
+  async getSyncStatus() {
+    return await this.backend('/v1/sync/status');
+  },
+
+  // Legacy compatibility helpers
+  async createLogFile(path, content) {
+    return await this.createLog({
+      path,
+      text: content,
+      timezone: 'America/Sao_Paulo'
+    });
   },
 
   async getHeadCommitSha() {
-    try {
-      const repoInfo = await this.getRepoInfo();
-      const branch = repoInfo.default_branch || 'main';
-      const commit = await this.api(`/repos/${this.owner}/${this.repo}/commits/${branch}`);
-      return commit.sha;
-    } catch (err) {
-      if (err.status === 404) {
-        return null;
-      }
-      throw err;
-    }
+    const status = await this.getSyncStatus();
+    const outbound = status?.syncState?.github_outbound?.lastSeenCommitSha;
+    const inbound = status?.syncState?.github_inbound?.lastSeenCommitSha;
+    return outbound || inbound || null;
+  },
+
+  async listLogTree() {
+    const response = await this.listLogs({ limit: 10000 });
+    const logs = Array.isArray(response?.logs) ? response.logs : [];
+    return logs.map(log => ({
+      path: log.path,
+      sha: log.path
+    }));
   },
 
   async compareCommits(base, head) {
-    const ref = `${encodeURIComponent(base)}...${encodeURIComponent(head)}`;
-    return await this.api(`/repos/${this.owner}/${this.repo}/compare/${ref}`);
+    if (!base || !head) {
+      return { status: 'ahead', files: [] };
+    }
+    return { status: base === head ? 'identical' : 'ahead', files: [] };
   },
 
-  async getBlobContent(sha) {
-    const blob = await this.api(`/repos/${this.owner}/${this.repo}/git/blobs/${sha}`);
-    if (!blob.content) return '';
-    const cleaned = blob.content.replace(/\n/g, '');
-    return decodeURIComponent(escape(atob(cleaned)));
+  async getBlobContent() {
+    return '';
   }
 };

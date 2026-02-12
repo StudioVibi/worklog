@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="worklog-api-base" content="" />
   <title>Worklog</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -24,35 +25,28 @@
           <div class="step">
             <span class="step-number">1</span>
             <div class="step-content">
-              <a href="https://github.com/settings/tokens/new?description=Worklog&scopes=repo" target="_blank" rel="noopener" class="link-button">Create token on GitHub</a>
-              <p class="step-hint">Opens GitHub with the required permissions selected.</p>
+              <p class="step-hint">Sign in with GitHub.</p>
             </div>
           </div>
           <div class="step">
             <span class="step-number">2</span>
             <div class="step-content">
-              <p class="step-hint">Click <strong>Generate token</strong> at the bottom of the page.</p>
+              <p class="step-hint">Access is restricted to <strong>StudioVibi</strong> organization members.</p>
             </div>
           </div>
           <div class="step">
             <span class="step-number">3</span>
             <div class="step-content">
-              <p class="step-hint">Copy the token (starts with <code>ghp_</code> or <code>github_pat_</code>).</p>
-            </div>
-          </div>
-          <div class="step">
-            <span class="step-number">4</span>
-            <div class="step-content">
-              <input id="pat-input" type="password" placeholder="Paste the token here" autocomplete="off" />
+              <p class="step-hint">After authorization, you will return here automatically.</p>
             </div>
           </div>
         </div>
 
-        <button id="login-btn" class="primary">Sign in</button>
+        <button id="login-btn" class="primary">Sign in with GitHub</button>
 
         <div class="login-notes">
-          <p>The token is stored locally in your browser. You only need to do this once.</p>
-          <p>Access needed: private repo <strong>StudioVibi/worklogs</strong>.</p>
+          <p>Authentication is handled by the backend using GitHub OAuth and secure cookies.</p>
+          <p>If needed, set the API base URL using <code>localStorage.setItem('worklog_api_base', 'https://your-api')</code>.</p>
         </div>
       </div>
     </section>
