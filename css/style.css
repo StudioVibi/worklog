@@ -782,9 +782,7 @@ button.danger {
 }
 
 .invoice-preview-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 10px;
+  display: block;
 }
 
 .invoice-block-title {
@@ -802,6 +800,7 @@ button.danger {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8rem;
+  table-layout: fixed;
 }
 
 .invoice-table th,
@@ -817,28 +816,18 @@ button.danger {
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  width: 100px;
 }
 
-.invoice-raw-list {
-  max-height: 260px;
-  overflow: auto;
-  border: 1px solid var(--line-soft);
-  background: #fff;
-  display: flex;
-  flex-direction: column;
+.invoice-table td.description {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
-.invoice-raw-item {
-  border-bottom: 1px solid var(--line-soft);
-  padding: 6px 8px;
-  font-size: 0.78rem;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.invoice-raw-meta {
-  color: var(--muted);
+#invoice-summary {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .invoice-settings-grid {

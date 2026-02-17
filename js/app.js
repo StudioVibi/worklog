@@ -142,8 +142,6 @@ const App = {
       invoiceError: document.getElementById('invoice-error'),
       invoiceGroupedBody: document.getElementById('invoice-grouped-body'),
       invoiceGroupedEmpty: document.getElementById('invoice-grouped-empty'),
-      invoiceRawList: document.getElementById('invoice-raw-list'),
-      invoiceRawEmpty: document.getElementById('invoice-raw-empty'),
       invoiceSaveSettings: document.getElementById('invoice-save-settings'),
       invoiceGenerateBtn: document.getElementById('invoice-generate-btn'),
       contractorCompany: document.getElementById('contractor-company'),
@@ -843,45 +841,8 @@ const App = {
     }
   },
 
-  renderInvoiceRawList(rawEntries) {
-    this.elements.invoiceRawList.innerHTML = '';
-    if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
-      this.elements.invoiceRawEmpty.classList.remove('hidden');
-      return;
-    }
-    this.elements.invoiceRawEmpty.classList.add('hidden');
-
-    const pad = (value) => String(value).padStart(2, '0');
-    const fragment = document.createDocumentFragment();
-    for (const entry of rawEntries) {
-      const startParts = Time.getZonedParts(entry.startAt);
-      const endParts = Time.getZonedParts(entry.endAt);
-      const startDate = Time.formatDateValue(startParts);
-      const endDate = Time.formatDateValue(endParts);
-      const startTime = `${pad(startParts.hour)}:${pad(startParts.minute)}`;
-      const endTime = `${pad(endParts.hour)}:${pad(endParts.minute)}`;
-
-      const item = document.createElement('div');
-      item.className = 'invoice-raw-item';
-
-      const meta = document.createElement('div');
-      meta.className = 'invoice-raw-meta';
-      meta.textContent = `${startDate} ${startTime} -> ${endDate} ${endTime} (${Invoice.formatHours(entry.durationMs)}h)`;
-
-      const text = document.createElement('div');
-      text.textContent = entry.description;
-
-      item.appendChild(meta);
-      item.appendChild(text);
-      fragment.appendChild(item);
-    }
-
-    this.elements.invoiceRawList.appendChild(fragment);
-  },
-
   renderInvoicePreview() {
     this.elements.invoiceGroupedBody.innerHTML = '';
-    this.renderInvoiceRawList([]);
 
     if (!this.invoice.preview) {
       this.elements.invoiceSummary.textContent = 'Select a range and click Preview.';
@@ -900,6 +861,7 @@ const App = {
       const row = document.createElement('tr');
 
       const description = document.createElement('td');
+      description.className = 'description';
       description.textContent = line.description;
 
       const entries = document.createElement('td');
@@ -923,7 +885,6 @@ const App = {
 
     this.elements.invoiceGroupedBody.appendChild(fragment);
     this.elements.invoiceGroupedEmpty.classList.toggle('hidden', preview.groupedLines.length > 0);
-    this.renderInvoiceRawList(preview.rawEntries);
 
     const startValue = Invoice.toDateValue(preview.startDate, Time.getTimeZone());
     const endValue = Invoice.toDateValue(preview.endDate, Time.getTimeZone());
