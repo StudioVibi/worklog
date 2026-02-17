@@ -729,6 +729,139 @@ button.danger {
   font-size: 0.9rem;
 }
 
+.modal-header-inline {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-close-btn {
+  width: 30px;
+  height: 30px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.invoice-modal-card {
+  width: min(980px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+}
+
+.invoice-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--line-soft);
+  padding: 10px;
+  background: #fafafa;
+}
+
+.invoice-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.invoice-range-btn.active {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}
+
+.invoice-range-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.invoice-preview-action {
+  display: flex;
+  align-items: flex-end;
+}
+
+.invoice-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.invoice-block-title {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.invoice-table-wrap {
+  border: 1px solid var(--line-soft);
+  background: #fff;
+}
+
+.invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.invoice-table th,
+.invoice-table td {
+  text-align: left;
+  border-bottom: 1px solid var(--line-soft);
+  padding: 6px 8px;
+  vertical-align: top;
+}
+
+.invoice-table td.number,
+.invoice-table th.number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.invoice-raw-list {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.invoice-raw-item {
+  border-bottom: 1px solid var(--line-soft);
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.invoice-raw-meta {
+  color: var(--muted);
+}
+
+.invoice-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.invoice-rate-input {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.invoice-rate-input select {
+  border: 1px solid var(--line);
+  font-family: inherit;
+  font-size: 0.9rem;
+  background: #fff;
+  color: var(--ink);
+  padding: 8px 10px;
+}
+
 .toast-container {
   position: fixed;
   right: 14px;
@@ -769,5 +902,14 @@ button.danger {
 
   .log-modal-buttons {
     justify-content: flex-end;
+  }
+
+  .invoice-preview-grid,
+  .invoice-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .invoice-rate-input {
+    grid-template-columns: 1fr;
   }
 }

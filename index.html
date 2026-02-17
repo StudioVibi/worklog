@@ -65,6 +65,7 @@
           </label>
           <button id="counter" class="counter" title="Log now">Worked: 00m00s</button>
           <div id="today-hours" class="counter today-hours" title="Hours logged today (Sao Paulo)">Today: 0h</div>
+          <button id="invoice-btn" class="counter" title="Generate invoice">Invoice</button>
           <button id="pause-btn" class="icon-btn" title="Pause" aria-label="Pause">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <rect x="6" y="5" width="4" height="14" fill="currentColor"></rect>
@@ -175,7 +176,104 @@
         <p>This is <strong>not</strong> a time clock. There are no mandatory schedules, minimum hours, or penalties. It is a voluntary log for freelancers/PJ billing and transparency, not a requirement to be online at specific times.</p>
       </div>
       <div class="modal-actions">
-        <button class="primary" data-close>Got it</button>
+        <button class="primary" data-close="helpModal">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="invoice-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card invoice-modal-card">
+      <div class="modal-header modal-header-inline">
+        <h2>Generate Invoice</h2>
+        <button class="icon-btn modal-close-btn" data-close="invoiceModal" aria-label="Close invoice modal">&times;</button>
+      </div>
+
+      <div class="invoice-section">
+        <div class="invoice-shortcuts">
+          <button class="scale-btn invoice-range-btn" data-invoice-range="this-week">This week</button>
+          <button class="scale-btn invoice-range-btn" data-invoice-range="this-month">This month</button>
+          <button class="scale-btn invoice-range-btn" data-invoice-range="last-month">Last month</button>
+        </div>
+        <div class="invoice-range-fields">
+          <label class="log-field">
+            <span>Start date</span>
+            <input id="invoice-start-date" type="date" />
+          </label>
+          <label class="log-field">
+            <span>End date</span>
+            <input id="invoice-end-date" type="date" />
+          </label>
+          <div class="invoice-preview-action">
+            <button id="invoice-preview-btn" class="primary">Preview</button>
+          </div>
+        </div>
+        <div id="invoice-error" class="log-error hidden"></div>
+        <div id="invoice-summary" class="modal-hint">Select a range and click Preview.</div>
+      </div>
+
+      <div class="invoice-section">
+        <h3>Preview (merged by description)</h3>
+        <div class="invoice-preview-grid">
+          <div>
+            <div class="invoice-block-title">Invoice lines</div>
+            <div class="invoice-table-wrap">
+              <table class="invoice-table">
+                <thead>
+                  <tr>
+                    <th>Description</th>
+                    <th>Entries</th>
+                    <th>Hours</th>
+                    <th>Amount</th>
+                  </tr>
+                </thead>
+                <tbody id="invoice-grouped-body"></tbody>
+              </table>
+              <div id="invoice-grouped-empty" class="modal-hint">No grouped entries yet.</div>
+            </div>
+          </div>
+          <div>
+            <div class="invoice-block-title">Raw logs</div>
+            <div id="invoice-raw-list" class="invoice-raw-list"></div>
+            <div id="invoice-raw-empty" class="modal-hint">No logs in selected range.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="invoice-section">
+        <h3>Invoice settings</h3>
+        <div class="invoice-settings-grid">
+          <div class="field">
+            <label for="contractor-company">Your company name (PJ)</label>
+            <input type="text" id="contractor-company" placeholder="Ex: Fulano Desenvolvimento LTDA">
+          </div>
+          <div class="field">
+            <label for="contractor-id">Tax ID (optional)</label>
+            <input type="text" id="contractor-id" placeholder="Ex: 12.345.678/0001-90">
+          </div>
+          <div class="field">
+            <label for="hourly-rate">Hourly rate</label>
+            <div class="invoice-rate-input">
+              <select id="currency">
+                <option value="USD">USD</option>
+                <option value="BRL">BRL</option>
+              </select>
+              <input type="number" id="hourly-rate" placeholder="50.00" step="0.01" min="0">
+            </div>
+          </div>
+          <div class="field">
+            <label for="payment-method">Default payment method</label>
+            <input type="text" id="payment-method" placeholder="Ex: Wire Transfer, PIX">
+          </div>
+        </div>
+        <div class="field">
+          <label for="bank-info">Bank information</label>
+          <textarea id="bank-info" rows="4" placeholder="Bank: ...&#10;Branch: ...&#10;Account: ...&#10;PIX: ..."></textarea>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="invoice-save-settings">Save settings</button>
+        <button id="invoice-generate-btn" class="primary" disabled>Generate YAML</button>
       </div>
     </div>
   </div>
@@ -186,6 +284,7 @@
   <script src="js/github.js"></script>
   <script src="js/time.js"></script>
   <script src="js/cache.js"></script>
+  <script src="js/invoice.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

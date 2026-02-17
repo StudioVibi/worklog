@@ -68,6 +68,10 @@ const App = {
     rowsDirty: true,
     renderScheduled: false
   },
+  invoice: {
+    activePreset: '',
+    preview: null
+  },
 
   init() {
     this.cacheElements();
@@ -99,6 +103,7 @@ const App = {
       helpBtn: document.getElementById('help-btn'),
       counter: document.getElementById('counter'),
       todayHours: document.getElementById('today-hours'),
+      invoiceBtn: document.getElementById('invoice-btn'),
       intervalInput: document.getElementById('interval-input'),
       userPill: document.getElementById('user-pill'),
       userAvatar: document.getElementById('user-avatar'),
@@ -129,6 +134,24 @@ const App = {
       registerLog: document.getElementById('register-log'),
       cancelLog: document.getElementById('cancel-log'),
       helpModal: document.getElementById('help-modal'),
+      invoiceModal: document.getElementById('invoice-modal'),
+      invoiceStartDate: document.getElementById('invoice-start-date'),
+      invoiceEndDate: document.getElementById('invoice-end-date'),
+      invoicePreviewBtn: document.getElementById('invoice-preview-btn'),
+      invoiceSummary: document.getElementById('invoice-summary'),
+      invoiceError: document.getElementById('invoice-error'),
+      invoiceGroupedBody: document.getElementById('invoice-grouped-body'),
+      invoiceGroupedEmpty: document.getElementById('invoice-grouped-empty'),
+      invoiceRawList: document.getElementById('invoice-raw-list'),
+      invoiceRawEmpty: document.getElementById('invoice-raw-empty'),
+      invoiceSaveSettings: document.getElementById('invoice-save-settings'),
+      invoiceGenerateBtn: document.getElementById('invoice-generate-btn'),
+      contractorCompany: document.getElementById('contractor-company'),
+      contractorId: document.getElementById('contractor-id'),
+      currency: document.getElementById('currency'),
+      hourlyRate: document.getElementById('hourly-rate'),
+      bankInfo: document.getElementById('bank-info'),
+      paymentMethod: document.getElementById('payment-method'),
       toastContainer: document.getElementById('toast-container')
     };
   },
@@ -139,6 +162,7 @@ const App = {
     this.elements.pauseBtn.addEventListener('click', () => this.togglePause());
     this.elements.helpBtn.addEventListener('click', () => this.showHelp());
     this.elements.counter.addEventListener('click', () => this.triggerManualLog());
+    this.elements.invoiceBtn.addEventListener('click', () => this.openInvoiceModal());
     this.elements.userPill.addEventListener('click', () => this.openProfile());
     this.elements.registerLog.addEventListener('click', () => this.submitLog());
     this.elements.cancelLog.addEventListener('click', () => this.cancelLog());
@@ -183,15 +207,45 @@ const App = {
     });
 
     document.querySelectorAll('[data-close]').forEach(btn => {
-      btn.addEventListener('click', () => this.hideModal(this.elements.helpModal));
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-close');
+        const target = key ? this.elements[key] : this.elements.helpModal;
+        if (target) this.hideModal(target);
+      });
     });
 
-    [this.elements.helpModal, this.elements.logModal].forEach(modal => {
+    [this.elements.helpModal, this.elements.logModal, this.elements.invoiceModal].forEach(modal => {
+      if (!modal) return;
       modal.addEventListener('click', (event) => {
-        if (event.target === modal && modal === this.elements.helpModal) {
+        if (
+          event.target === modal
+          && (modal === this.elements.helpModal || modal === this.elements.invoiceModal)
+        ) {
           this.hideModal(modal);
         }
       });
+    });
+
+    document.querySelectorAll('.invoice-range-btn').forEach(btn => {
+      btn.addEventListener('click', () => this.applyInvoicePreset(btn.dataset.invoiceRange));
+    });
+
+    this.elements.invoiceStartDate.addEventListener('change', () => this.clearInvoicePresetSelection());
+    this.elements.invoiceEndDate.addEventListener('change', () => this.clearInvoicePresetSelection());
+    this.elements.invoicePreviewBtn.addEventListener('click', () => this.previewInvoice());
+    this.elements.invoiceSaveSettings.addEventListener('click', () => this.saveInvoiceSettings());
+    this.elements.invoiceGenerateBtn.addEventListener('click', () => this.generateInvoiceYaml());
+
+    [
+      this.elements.contractorCompany,
+      this.elements.contractorId,
+      this.elements.currency,
+      this.elements.hourlyRate,
+      this.elements.bankInfo,
+      this.elements.paymentMethod
+    ].forEach((input) => {
+      input.addEventListener('input', () => this.renderInvoicePreview());
+      input.addEventListener('change', () => this.renderInvoicePreview());
     });
 
     window.addEventListener('beforeunload', () => this.saveTimerState());
@@ -564,6 +618,8 @@ const App = {
 
     this.startTimer();
     await this.loadLogsFromCache();
+    this.loadInvoiceSettings();
+    this.applyInvoicePreset('this-month');
     this.initTimeline();
     this.startPolling();
     this.loadLogs();
@@ -600,6 +656,335 @@ const App = {
     window.open(`https://github.com/${this.user.login}`, '_blank');
   },
 
+  hasInvoiceModule() {
+    return typeof Invoice !== 'undefined' && Invoice;
+  },
+
+  setInvoiceError(message) {
+    if (!this.elements.invoiceError) return;
+    this.elements.invoiceError.textContent = message;
+    this.elements.invoiceError.classList.remove('hidden');
+  },
+
+  clearInvoiceError() {
+    if (!this.elements.invoiceError) return;
+    this.elements.invoiceError.textContent = '';
+    this.elements.invoiceError.classList.add('hidden');
+  },
+
+  setInvoicePresetSelection(preset) {
+    this.invoice.activePreset = String(preset || '');
+    document.querySelectorAll('.invoice-range-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.invoiceRange === this.invoice.activePreset);
+    });
+  },
+
+  clearInvoicePresetSelection() {
+    this.setInvoicePresetSelection('');
+    this.invoice.preview = null;
+    this.renderInvoicePreview();
+  },
+
+  applyInvoicePreset(preset) {
+    if (!this.hasInvoiceModule()) return;
+
+    const range = Invoice.getPresetRange(preset, {
+      timeZone: Time.getTimeZone()
+    });
+
+    this.elements.invoiceStartDate.value = range.startValue;
+    this.elements.invoiceEndDate.value = range.endValue;
+    this.setInvoicePresetSelection(preset);
+    this.invoice.preview = null;
+    this.clearInvoiceError();
+    this.renderInvoicePreview();
+  },
+
+  readInvoiceSettingsForm() {
+    return {
+      contractorCompany: String(this.elements.contractorCompany.value || '').trim(),
+      contractorId: String(this.elements.contractorId.value || '').trim(),
+      currency: String(this.elements.currency.value || 'USD').trim().toUpperCase() || 'USD',
+      hourlyRate: String(this.elements.hourlyRate.value || '').trim(),
+      bankInfo: String(this.elements.bankInfo.value || '').trim(),
+      paymentMethod: String(this.elements.paymentMethod.value || '').trim()
+    };
+  },
+
+  collectInvoiceSettings({ strict = false } = {}) {
+    const form = this.readInvoiceSettingsForm();
+    const hourlyRateValue = Number(form.hourlyRate.replace(',', '.'));
+    const hourlyRate = Number.isFinite(hourlyRateValue) && hourlyRateValue > 0 ? hourlyRateValue : 0;
+
+    const normalized = {
+      contractorCompany: form.contractorCompany,
+      contractorId: form.contractorId,
+      currency: form.currency === 'BRL' ? 'BRL' : 'USD',
+      hourlyRate,
+      bankInfo: form.bankInfo,
+      paymentMethod: form.paymentMethod
+    };
+
+    if (!strict) {
+      return { ok: true, settings: normalized };
+    }
+
+    if (!normalized.contractorCompany) {
+      return { ok: false, error: 'Company name is required.' };
+    }
+    if (!(normalized.hourlyRate > 0)) {
+      return { ok: false, error: 'Hourly rate must be greater than zero.' };
+    }
+    if (!normalized.bankInfo) {
+      return { ok: false, error: 'Bank information is required.' };
+    }
+    if (!normalized.paymentMethod) {
+      return { ok: false, error: 'Payment method is required.' };
+    }
+
+    return { ok: true, settings: normalized };
+  },
+
+  loadInvoiceSettings() {
+    if (!this.hasInvoiceModule() || !this.user || !this.user.login) return;
+    const saved = Invoice.loadSettings(this.user.login);
+    this.elements.contractorCompany.value = saved.contractorCompany || '';
+    this.elements.contractorId.value = saved.contractorId || '';
+    this.elements.currency.value = saved.currency === 'BRL' ? 'BRL' : 'USD';
+    this.elements.hourlyRate.value = saved.hourlyRate || '';
+    this.elements.bankInfo.value = saved.bankInfo || '';
+    this.elements.paymentMethod.value = saved.paymentMethod || '';
+    this.updateInvoiceGenerateState();
+  },
+
+  saveInvoiceSettings() {
+    if (!this.hasInvoiceModule() || !this.user || !this.user.login) return;
+    Invoice.saveSettings(this.user.login, this.readInvoiceSettingsForm());
+    this.toast('Invoice settings saved', 'success');
+    this.renderInvoicePreview();
+  },
+
+  openInvoiceModal() {
+    if (!this.hasInvoiceModule()) {
+      this.toast('Invoice module is not available.', 'error');
+      return;
+    }
+    if (!this.user || !this.user.login) {
+      this.toast('Log in before generating invoices.', 'error');
+      return;
+    }
+
+    if (!this.elements.invoiceStartDate.value || !this.elements.invoiceEndDate.value) {
+      this.applyInvoicePreset('this-month');
+    }
+    this.clearInvoiceError();
+    this.renderInvoicePreview();
+    this.showModal(this.elements.invoiceModal);
+  },
+
+  parseInvoiceRange() {
+    if (!this.hasInvoiceModule()) {
+      return { ok: false, error: 'Invoice module is not available.' };
+    }
+
+    return Invoice.parseRange(
+      this.elements.invoiceStartDate.value,
+      this.elements.invoiceEndDate.value,
+      { timeZone: Time.getTimeZone() }
+    );
+  },
+
+  async previewInvoice() {
+    if (!this.user || !this.user.login) return;
+
+    const range = this.parseInvoiceRange();
+    if (!range.ok) {
+      this.setInvoiceError(range.error);
+      return;
+    }
+
+    this.clearInvoiceError();
+    this.elements.invoicePreviewBtn.disabled = true;
+    this.elements.invoicePreviewBtn.textContent = 'Loading...';
+
+    try {
+      const toDate = new Date(range.endExclusive.getTime() - 1);
+      const limit = 10000;
+      const response = await GitHub.listLogs({
+        from: range.startDate.toISOString(),
+        to: toDate.toISOString(),
+        user: this.user.login,
+        limit
+      });
+      const logs = Array.isArray(response?.logs) ? response.logs : [];
+      const prepared = Invoice.preparePreview({
+        logs,
+        userLogin: this.user.login,
+        rangeStart: range.startDate,
+        rangeEndExclusive: range.endExclusive,
+        defaultDurationMs: this.intervalMs
+      });
+
+      this.invoice.preview = {
+        ...prepared,
+        startDate: range.startDate,
+        endExclusive: range.endExclusive,
+        endDate: Invoice.addDays(range.endExclusive, -1, Time.getTimeZone()),
+        limitReached: logs.length >= limit
+      };
+      this.renderInvoicePreview();
+    } catch (err) {
+      console.error(err);
+      this.setInvoiceError(`Failed to preview logs: ${err.message}`);
+      this.toast(`Invoice preview failed: ${err.message}`, 'error');
+    } finally {
+      this.elements.invoicePreviewBtn.disabled = false;
+      this.elements.invoicePreviewBtn.textContent = 'Preview';
+    }
+  },
+
+  renderInvoiceRawList(rawEntries) {
+    this.elements.invoiceRawList.innerHTML = '';
+    if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
+      this.elements.invoiceRawEmpty.classList.remove('hidden');
+      return;
+    }
+    this.elements.invoiceRawEmpty.classList.add('hidden');
+
+    const pad = (value) => String(value).padStart(2, '0');
+    const fragment = document.createDocumentFragment();
+    for (const entry of rawEntries) {
+      const startParts = Time.getZonedParts(entry.startAt);
+      const endParts = Time.getZonedParts(entry.endAt);
+      const startDate = Time.formatDateValue(startParts);
+      const endDate = Time.formatDateValue(endParts);
+      const startTime = `${pad(startParts.hour)}:${pad(startParts.minute)}`;
+      const endTime = `${pad(endParts.hour)}:${pad(endParts.minute)}`;
+
+      const item = document.createElement('div');
+      item.className = 'invoice-raw-item';
+
+      const meta = document.createElement('div');
+      meta.className = 'invoice-raw-meta';
+      meta.textContent = `${startDate} ${startTime} -> ${endDate} ${endTime} (${Invoice.formatHours(entry.durationMs)}h)`;
+
+      const text = document.createElement('div');
+      text.textContent = entry.description;
+
+      item.appendChild(meta);
+      item.appendChild(text);
+      fragment.appendChild(item);
+    }
+
+    this.elements.invoiceRawList.appendChild(fragment);
+  },
+
+  renderInvoicePreview() {
+    this.elements.invoiceGroupedBody.innerHTML = '';
+    this.renderInvoiceRawList([]);
+
+    if (!this.invoice.preview) {
+      this.elements.invoiceSummary.textContent = 'Select a range and click Preview.';
+      this.elements.invoiceGroupedEmpty.classList.remove('hidden');
+      this.updateInvoiceGenerateState();
+      return;
+    }
+
+    const preview = this.invoice.preview;
+    const settings = this.collectInvoiceSettings({ strict: false }).settings;
+    const rate = settings.hourlyRate;
+    const currency = settings.currency;
+
+    const fragment = document.createDocumentFragment();
+    for (const line of preview.groupedLines) {
+      const row = document.createElement('tr');
+
+      const description = document.createElement('td');
+      description.textContent = line.description;
+
+      const entries = document.createElement('td');
+      entries.className = 'number';
+      entries.textContent = String(line.entriesCount);
+
+      const hours = document.createElement('td');
+      hours.className = 'number';
+      hours.textContent = line.totalHours.toFixed(2);
+
+      const amount = document.createElement('td');
+      amount.className = 'number';
+      amount.textContent = Invoice.formatMoney(line.totalHours * rate, currency);
+
+      row.appendChild(description);
+      row.appendChild(entries);
+      row.appendChild(hours);
+      row.appendChild(amount);
+      fragment.appendChild(row);
+    }
+
+    this.elements.invoiceGroupedBody.appendChild(fragment);
+    this.elements.invoiceGroupedEmpty.classList.toggle('hidden', preview.groupedLines.length > 0);
+    this.renderInvoiceRawList(preview.rawEntries);
+
+    const startValue = Invoice.toDateValue(preview.startDate, Time.getTimeZone());
+    const endValue = Invoice.toDateValue(preview.endDate, Time.getTimeZone());
+    const totalAmount = Invoice.formatMoney(preview.totalHours * rate, currency);
+    const warning = preview.limitReached
+      ? ' Warning: query reached limit (10000), narrow the period if needed.'
+      : '';
+    this.elements.invoiceSummary.textContent =
+      `Period ${startValue} -> ${endValue} | ${preview.rawEntries.length} logs | `
+      + `${preview.groupedLines.length} lines | ${preview.totalHours.toFixed(2)}h | `
+      + `Total ${totalAmount}.${warning}`;
+
+    this.updateInvoiceGenerateState();
+  },
+
+  updateInvoiceGenerateState() {
+    const hasPreview = !!(this.invoice.preview && this.invoice.preview.groupedLines.length > 0);
+    const validSettings = this.collectInvoiceSettings({ strict: true }).ok;
+    this.elements.invoiceGenerateBtn.disabled = !(hasPreview && validSettings);
+  },
+
+  generateInvoiceYaml() {
+    if (!this.hasInvoiceModule() || !this.user || !this.user.login) return;
+    if (!this.invoice.preview || this.invoice.preview.groupedLines.length === 0) {
+      this.setInvoiceError('Preview logs first before generating invoice.');
+      return;
+    }
+
+    const validated = this.collectInvoiceSettings({ strict: true });
+    if (!validated.ok) {
+      this.setInvoiceError(validated.error);
+      this.updateInvoiceGenerateState();
+      return;
+    }
+
+    this.clearInvoiceError();
+    Invoice.saveSettings(this.user.login, this.readInvoiceSettingsForm());
+
+    const preview = this.invoice.preview;
+    const timeZone = Time.getTimeZone();
+    const yaml = Invoice.buildYaml({
+      userLogin: this.user.login,
+      timeZone,
+      rangeStart: preview.startDate,
+      rangeEnd: preview.endDate,
+      settings: validated.settings,
+      groupedLines: preview.groupedLines,
+      totalDurationMs: preview.totalDurationMs
+    });
+
+    const filename = Invoice.generateFilename({
+      userLogin: this.user.login,
+      rangeStart: preview.startDate,
+      rangeEnd: preview.endDate,
+      timeZone
+    });
+
+    Invoice.downloadYaml(filename, yaml);
+    this.toast('Invoice YAML generated', 'success');
+  },
+
   async login() {
     this.elements.loginBtn.disabled = true;
     this.elements.loginBtn.textContent = 'Redirecting...';
@@ -614,6 +999,9 @@ const App = {
     this.renderedPaths = [];
     this.renderedPathSet = new Set();
     this.logsVersion = 0;
+    this.invoice.preview = null;
+    this.clearInvoiceError();
+    this.hideModal(this.elements.invoiceModal);
     this.showLoginScreen();
   },
 
