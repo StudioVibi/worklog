@@ -3,195 +3,162 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Worklog</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
-  <link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23111111'/%3E%3Ctext x='50' y='62' font-size='58' text-anchor='middle' fill='%23ffffff' font-family='Arial'%3EW%3C/text%3E%3C/svg%3E" />
+  <title>Worklog Moved</title>
+  <style>
+    :root {
+      --bg: #f2f2f2;
+      --panel: #ffffff;
+      --ink: #111111;
+      --muted: #4b5563;
+      --line: #a1a1aa;
+      --accent: #0f7a4a;
+      --accent-dark: #0b5a36;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      font-family: "JetBrains Mono", "Space Grotesk", monospace;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    .card {
+      width: min(640px, 96vw);
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.3rem;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      padding: 8px 12px;
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .btn.primary:hover {
+      background: var(--accent-dark);
+    }
+
+    code {
+      display: inline-block;
+      word-break: break-all;
+      background: #f8f8f8;
+      border: 1px solid #e5e7eb;
+      padding: 4px 6px;
+    }
+
+    .small {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+  </style>
 </head>
 <body>
-  <div id="app" class="app">
-    <section id="login-screen" class="screen centered hidden">
-      <div class="login-card">
-        <div class="login-header">
-          <div class="badge">Studio Vibi</div>
-          <h1>Worklog</h1>
-          <p>Lightweight hourly logging for transparent, flexible work.</p>
-        </div>
-
-        <div class="login-steps">
-          <div class="step">
-            <span class="step-number">1</span>
-            <div class="step-content">
-              <a href="https://github.com/settings/tokens/new?description=Worklog&scopes=repo" target="_blank" rel="noopener" class="link-button">Create token on GitHub</a>
-              <p class="step-hint">Opens GitHub with the required permissions selected.</p>
-            </div>
-          </div>
-          <div class="step">
-            <span class="step-number">2</span>
-            <div class="step-content">
-              <p class="step-hint">Click <strong>Generate token</strong> at the bottom of the page.</p>
-            </div>
-          </div>
-          <div class="step">
-            <span class="step-number">3</span>
-            <div class="step-content">
-              <p class="step-hint">Copy the token (starts with <code>ghp_</code> or <code>github_pat_</code>).</p>
-            </div>
-          </div>
-          <div class="step">
-            <span class="step-number">4</span>
-            <div class="step-content">
-              <input id="pat-input" type="password" placeholder="Paste the token here" autocomplete="off" />
-            </div>
-          </div>
-        </div>
-
-        <button id="login-btn" class="primary">Sign in</button>
-
-        <div class="login-notes">
-          <p>The token is stored locally in your browser. You only need to do this once.</p>
-          <p>Access needed: private repo <strong>StudioVibi/worklogs</strong>.</p>
-        </div>
-      </div>
-    </section>
-
-    <section id="main-screen" class="screen hidden">
-      <header class="topbar">
-        <div class="brand">
-          <div class="brand-title">Worklog</div>
-        </div>
-
-        <div class="topbar-right">
-          <label class="interval-control hidden" title="Log interval">
-            <span>Interval</span>
-            <input id="interval-input" type="number" min="1" max="120" step="1" value="60" />
-            <span>m</span>
-          </label>
-          <button id="counter" class="counter" title="Log now">Worked: 00m00s</button>
-          <div id="today-hours" class="counter today-hours" title="Hours logged today (Sao Paulo)">Today: 0h</div>
-          <button id="pause-btn" class="icon-btn" title="Pause" aria-label="Pause">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="6" y="5" width="4" height="14" fill="currentColor"></rect>
-              <rect x="14" y="5" width="4" height="14" fill="currentColor"></rect>
-            </svg>
-          </button>
-          <button id="user-pill" class="user-pill user-pill-button" title="Open GitHub profile" aria-label="Open GitHub profile">
-            <img id="user-avatar" alt="" />
-            <span id="user-name">@user</span>
-          </button>
-          <button id="logout-btn" class="icon-btn" title="Log out" aria-label="Log out">
-            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H9"></path>
-              <path d="M5 12h9"></path>
-              <path d="M8 9l-3 3 3 3"></path>
-            </svg>
-          </button>
-          <button id="help-btn" class="icon-btn help-btn" title="About Worklog" aria-label="About Worklog">?</button>
-        </div>
-      </header>
-
-      <main class="main">
-        <div class="log-shell">
-          <div class="log-header">
-            <div class="tab-bar">
-              <button id="tab-logs" class="tab-btn active">Logs</button>
-              <span class="tab-separator">|</span>
-              <button id="tab-timeline" class="tab-btn">Timeline</button>
-            </div>
-            <div class="tz-indicator" title="Times shown in Sao Paulo (America/Sao_Paulo)">TZ: Sao Paulo</div>
-          </div>
-
-          <div id="logs-view" class="logs-view">
-            <div id="log-container" class="log-container">
-              <div id="log-loading" class="log-loading">Loading logs...</div>
-              <div id="log-list" class="log-list"></div>
-              <div id="log-empty" class="log-empty hidden">No logs yet.</div>
-            </div>
-          </div>
-
-          <div id="timeline-view" class="timeline-view hidden">
-          <div class="timeline-controls">
-            <div class="timeline-scales">
-              <button class="scale-btn active" data-scale="daily">Daily</button>
-              <button class="scale-btn" data-scale="weekly">Weekly</button>
-              <button class="scale-btn" data-scale="monthly">Monthly</button>
-            </div>
-            <div id="timeline-total" class="counter timeline-total" title="Total logged for selected period">Today: 0h</div>
-          </div>
-            <div id="timeline-scroll" class="timeline-scroll">
-              <div id="timeline-canvas" class="timeline-canvas">
-                <div id="timeline-grid" class="timeline-grid"></div>
-                <div id="timeline-labels" class="timeline-labels"></div>
-                <div id="timeline-rows" class="timeline-rows"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-    </section>
-  </div>
-
-      <div id="log-modal" class="modal hidden" aria-hidden="true">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h2>What you're working on?</h2>
-      </div>
-      <div class="log-fields">
-        <label class="log-field">
-          <span>Date</span>
-          <input id="log-date" type="date" />
-        </label>
-        <label class="log-field">
-          <span>End time</span>
-          <input id="log-time" type="time" step="60" />
-        </label>
-        <div class="log-field">
-          <span>Duration</span>
-          <div class="log-duration">
-            <input id="log-hours" type="number" min="0" step="1" />
-            <span>h</span>
-            <input id="log-minutes" type="number" min="0" max="59" step="1" />
-            <span>m</span>
-          </div>
-        </div>
-      </div>
-      <div id="log-error" class="log-error hidden"></div>
-      <textarea id="log-text" rows="4" placeholder="e.g. debugging race condition on HVM's collapser.c"></textarea>
-      <div class="modal-actions log-modal-actions">
-        <div id="log-queue-meta" class="log-queue-meta"></div>
-        <div class="log-modal-buttons">
-          <button id="cancel-log" class="danger">Erase</button>
-          <button id="register-log" class="primary">Send</button>
-        </div>
-      </div>
+  <main class="card">
+    <h1>Whoops, you're in the wrong page.</h1>
+    <p>This legacy Worklog page is no longer used. You will be redirected to the current Worklog URL in <strong id="countdown">8</strong>s.</p>
+    <p>Destination: <code id="destination"></code></p>
+    <div class="actions">
+      <a id="go-now" class="btn primary" href="#">Go now</a>
+      <button id="cancel" class="btn" type="button">Cancel auto redirect</button>
     </div>
-  </div>
+  </main>
 
-  <div id="help-modal" class="modal hidden" aria-hidden="true">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h2>About Worklog</h2>
-      </div>
-      <div class="help-text">
-        <p><strong>Worklog</strong> is a lightweight activity log used for visibility, billing, and historical context. When you choose to work, keep this tab open.</p>
-        <p>Every full interval (default 60 minutes, configurable), you will hear a beep and a modal will ask for a short note on what you worked on in the last interval (or what you are working on right now). Press <strong>Send</strong> to save it. If you forgot the tab open, press <strong>Erase</strong> to discard that time.</p>
-        <p>You can pause/resume at any time. Closing the tab ends the session.</p>
-        <p>This is <strong>not</strong> a time clock. There are no mandatory schedules, minimum hours, or penalties. It is a voluntary log for freelancers/PJ billing and transparency, not a requirement to be online at specific times.</p>
-      </div>
-      <div class="modal-actions">
-        <button class="primary" data-close>Got it</button>
-      </div>
-    </div>
-  </div>
+  <script>
+    const REDIRECT_URL = 'https://gg3ho4mp1h.execute-api.us-east-1.amazonaws.com/';
+    const REDIRECT_DELAY_SECONDS = 8;
 
-  <div id="toast-container" class="toast-container"></div>
-  <div id="timeline-tooltip" class="timeline-tooltip hidden"></div>
+    const destinationEl = document.getElementById('destination');
+    const countdownEl = document.getElementById('countdown');
+    const goNowEl = document.getElementById('go-now');
+    const cancelEl = document.getElementById('cancel');
 
-  <script src="js/github.js"></script>
-  <script src="js/time.js"></script>
-  <script src="js/cache.js"></script>
-  <script src="js/app.js"></script>
+    destinationEl.textContent = REDIRECT_URL;
+    goNowEl.href = REDIRECT_URL;
+
+    let secondsLeft = REDIRECT_DELAY_SECONDS;
+    let timer = null;
+    let redirectTimer = null;
+
+    function cancelAutoRedirect() {
+      if (timer) clearInterval(timer);
+      if (redirectTimer) clearTimeout(redirectTimer);
+      timer = null;
+      redirectTimer = null;
+      countdownEl.textContent = 'stopped';
+      cancelEl.disabled = true;
+      cancelEl.textContent = 'Auto redirect canceled';
+    }
+
+    cancelEl.addEventListener('click', cancelAutoRedirect);
+
+    if (REDIRECT_URL.includes('REPLACE-WITH-YOUR-NEW-WORKLOG-URL')) {
+      cancelAutoRedirect();
+      destinationEl.textContent = 'REDIRECT_URL not configured yet';
+      goNowEl.removeAttribute('href');
+      goNowEl.classList.remove('primary');
+      goNowEl.textContent = 'Set REDIRECT_URL first';
+      goNowEl.style.pointerEvents = 'none';
+      goNowEl.style.opacity = '0.6';
+    } else if (window.location.href.startsWith(REDIRECT_URL)) {
+      cancelAutoRedirect();
+      countdownEl.textContent = 'already here';
+      cancelEl.textContent = 'No redirect needed';
+    } else {
+      timer = setInterval(() => {
+        secondsLeft -= 1;
+        countdownEl.textContent = String(Math.max(0, secondsLeft));
+        if (secondsLeft <= 0) {
+          clearInterval(timer);
+          timer = null;
+        }
+      }, 1000);
+
+      redirectTimer = setTimeout(() => {
+        window.location.replace(REDIRECT_URL);
+      }, REDIRECT_DELAY_SECONDS * 1000);
+    }
+  </script>
 </body>
 </html>
