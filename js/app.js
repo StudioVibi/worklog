@@ -144,6 +144,7 @@ const App = {
       invoiceGroupedEmpty: document.getElementById('invoice-grouped-empty'),
       invoiceSaveSettings: document.getElementById('invoice-save-settings'),
       invoiceGenerateBtn: document.getElementById('invoice-generate-btn'),
+      clientCompany: document.getElementById('client-company'),
       contractorCompany: document.getElementById('contractor-company'),
       contractorId: document.getElementById('contractor-id'),
       currency: document.getElementById('currency'),
@@ -235,6 +236,7 @@ const App = {
     this.elements.invoiceGenerateBtn.addEventListener('click', () => this.generateInvoiceYaml());
 
     [
+      this.elements.clientCompany,
       this.elements.contractorCompany,
       this.elements.contractorId,
       this.elements.currency,
@@ -700,6 +702,7 @@ const App = {
 
   readInvoiceSettingsForm() {
     return {
+      clientCompany: String(this.elements.clientCompany.value || '').trim(),
       contractorCompany: String(this.elements.contractorCompany.value || '').trim(),
       contractorId: String(this.elements.contractorId.value || '').trim(),
       currency: String(this.elements.currency.value || 'USD').trim().toUpperCase() || 'USD',
@@ -715,6 +718,7 @@ const App = {
     const hourlyRate = Number.isFinite(hourlyRateValue) && hourlyRateValue > 0 ? hourlyRateValue : 0;
 
     const normalized = {
+      clientCompany: form.clientCompany,
       contractorCompany: form.contractorCompany,
       contractorId: form.contractorId,
       currency: form.currency === 'BRL' ? 'BRL' : 'USD',
@@ -727,6 +731,9 @@ const App = {
       return { ok: true, settings: normalized };
     }
 
+    if (!normalized.clientCompany) {
+      return { ok: false, error: 'Client company is required.' };
+    }
     if (!normalized.contractorCompany) {
       return { ok: false, error: 'Company name is required.' };
     }
@@ -746,6 +753,7 @@ const App = {
   loadInvoiceSettings() {
     if (!this.hasInvoiceModule() || !this.user || !this.user.login) return;
     const saved = Invoice.loadSettings(this.user.login);
+    this.elements.clientCompany.value = saved.clientCompany || '';
     this.elements.contractorCompany.value = saved.contractorCompany || '';
     this.elements.contractorId.value = saved.contractorId || '';
     this.elements.currency.value = saved.currency === 'BRL' ? 'BRL' : 'USD';
