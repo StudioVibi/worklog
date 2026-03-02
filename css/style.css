@@ -708,6 +708,12 @@ button.danger {
 .log-modal-buttons {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.log-modal-buttons button {
+  white-space: nowrap;
 }
 
 .log-queue-meta {

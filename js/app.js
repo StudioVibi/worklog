@@ -132,7 +132,9 @@ const App = {
       logError: document.getElementById('log-error'),
       logText: document.getElementById('log-text'),
       registerLog: document.getElementById('register-log'),
+      registerAllLogs: document.getElementById('register-all-logs'),
       cancelLog: document.getElementById('cancel-log'),
+      cancelAllLogs: document.getElementById('cancel-all-logs'),
       helpModal: document.getElementById('help-modal'),
       invoiceModal: document.getElementById('invoice-modal'),
       invoiceStartDate: document.getElementById('invoice-start-date'),
@@ -164,7 +166,9 @@ const App = {
     this.elements.invoiceBtn.addEventListener('click', () => this.openInvoiceModal());
     this.elements.userPill.addEventListener('click', () => this.openProfile());
     this.elements.registerLog.addEventListener('click', () => this.submitLog());
+    this.elements.registerAllLogs.addEventListener('click', () => this.submitAllLogs());
     this.elements.cancelLog.addEventListener('click', () => this.cancelLog());
+    this.elements.cancelAllLogs.addEventListener('click', () => this.cancelAllLogs());
     this.elements.intervalInput.addEventListener('change', () => this.updateInterval());
     this.elements.tabLogs.addEventListener('click', () => this.showLogsTab());
     this.elements.tabTimeline.addEventListener('click', () => this.showTimelineTab());
@@ -387,6 +391,40 @@ const App = {
     const current = this.pendingLogQueue[0] || null;
     this.isAwaitingLog = !!current;
     this.pendingMs = current ? current.durationMs : 0;
+  },
+
+  getPendingQueueSummary() {
+    if (!Array.isArray(this.pendingLogQueue) || this.pendingLogQueue.length === 0) {
+      return null;
+    }
+
+    let earliestStartMs = Number.POSITIVE_INFINITY;
+    let latestEndMs = Number.NEGATIVE_INFINITY;
+    let totalDurationMs = 0;
+    let count = 0;
+
+    for (const entry of this.pendingLogQueue) {
+      const durationMs = Math.max(60 * 1000, Math.floor(Number(entry?.durationMs) || 0));
+      const endAtMs = Number(entry?.endAtMs ?? entry?.appearedAtMs);
+      if (durationMs <= 0 || !Number.isFinite(endAtMs)) continue;
+
+      const startAtMs = endAtMs - durationMs;
+      earliestStartMs = Math.min(earliestStartMs, startAtMs);
+      latestEndMs = Math.max(latestEndMs, endAtMs);
+      totalDurationMs += durationMs;
+      count += 1;
+    }
+
+    if (count <= 0 || !Number.isFinite(earliestStartMs) || !Number.isFinite(latestEndMs)) {
+      return null;
+    }
+
+    return {
+      count,
+      earliestStartMs: Math.floor(earliestStartMs),
+      latestEndMs: Math.floor(latestEndMs),
+      totalDurationMs: Math.floor(totalDurationMs)
+    };
   },
 
   loadInterval() {
@@ -1230,14 +1268,56 @@ const App = {
 
   updatePendingLogMeta(entry) {
     if (!this.elements.logQueueMeta || !entry) return;
-    const appearedAt = this.formatPendingLogTimestamp(entry.appearedAtMs);
-    const worth = this.formatDuration(entry.durationMs);
-    this.elements.logQueueMeta.textContent = `Appeared at: ${appearedAt}\nWorth: ${worth}`;
+    const summary = this.getPendingQueueSummary();
+
+    if (!summary || summary.count <= 1) {
+      const appearedAt = this.formatPendingLogTimestamp(entry.appearedAtMs);
+      const worth = this.formatDuration(entry.durationMs);
+      this.elements.logQueueMeta.textContent = `Appeared at: ${appearedAt}\nWorth: ${worth}`;
+      this.setBulkActionsVisible(false);
+      return;
+    }
+
+    const rangeStart = this.formatPendingLogTimestamp(summary.earliestStartMs);
+    const rangeEnd = this.formatPendingLogTimestamp(summary.latestEndMs);
+    const currentWorth = this.formatDuration(entry.durationMs);
+    this.elements.logQueueMeta.textContent =
+      `Queued sessions: ${summary.count}\n`
+      + `Range: ${rangeStart} -> ${rangeEnd}\n`
+      + `Total queued: ${this.formatDuration(summary.totalDurationMs)}\n`
+      + `Current slot worth: ${currentWorth}`;
+    this.setBulkActionsVisible(true);
   },
 
   clearPendingLogMeta() {
     if (!this.elements.logQueueMeta) return;
     this.elements.logQueueMeta.textContent = '';
+    this.setBulkActionsVisible(false);
+  },
+
+  setBulkActionsVisible(visible) {
+    if (this.elements.cancelAllLogs) {
+      this.elements.cancelAllLogs.classList.toggle('hidden', !visible);
+    }
+    if (this.elements.registerAllLogs) {
+      this.elements.registerAllLogs.classList.toggle('hidden', !visible);
+    }
+  },
+
+  clearPendingQueue() {
+    this.pendingLogQueue = [];
+    this.activePendingLog = null;
+    this.logTimespanBaseline = null;
+    this.logTimespanEdited = false;
+    this.syncPendingQueueState();
+    this.showPendingLogModal();
+
+    if (!this.isAwaitingLog) {
+      this.clearLogError();
+      this.clearAttention();
+    }
+
+    this.saveTimerState();
   },
 
   setPauseButton(isPaused) {
@@ -1281,6 +1361,28 @@ const App = {
     this.completeCurrentPendingLog();
   },
 
+  cancelAllLogs() {
+    if (!this.isAwaitingLog) return;
+
+    const summary = this.getPendingQueueSummary();
+    if (!summary || summary.count <= 1) {
+      this.cancelLog();
+      return;
+    }
+
+    const rangeStart = this.formatPendingLogTimestamp(summary.earliestStartMs);
+    const rangeEnd = this.formatPendingLogTimestamp(summary.latestEndMs);
+    const ok = window.confirm(
+      `Erase all queued sessions?\n\n`
+      + `${summary.count} sessions from ${rangeStart} to ${rangeEnd}\n`
+      + `Total: ${this.formatDuration(summary.totalDurationMs)}`
+    );
+    if (!ok) return;
+
+    this.clearPendingQueue();
+    this.toast('All queued sessions erased', 'success');
+  },
+
   async submitLog() {
     if (!this.isAwaitingLog) return;
 
@@ -1298,6 +1400,9 @@ const App = {
 
     this.isSavingLog = true;
     this.elements.registerLog.disabled = true;
+    this.elements.registerAllLogs.disabled = true;
+    this.elements.cancelLog.disabled = true;
+    this.elements.cancelAllLogs.disabled = true;
     this.elements.registerLog.textContent = 'Saving...';
 
     try {
@@ -1337,10 +1442,111 @@ const App = {
     } finally {
       this.isSavingLog = false;
       this.elements.registerLog.textContent = 'Send';
+      this.elements.cancelLog.disabled = false;
+      this.elements.cancelAllLogs.disabled = false;
       if (this.isAwaitingLog) {
         this.validateLogTimespan();
+        const summary = this.getPendingQueueSummary();
+        this.elements.registerAllLogs.disabled = !(summary && summary.count > 1);
       } else {
         this.elements.registerLog.disabled = false;
+        this.elements.registerAllLogs.disabled = false;
+      }
+    }
+  },
+
+  async submitAllLogs() {
+    if (!this.isAwaitingLog) return;
+
+    const summary = this.getPendingQueueSummary();
+    if (!summary || summary.count <= 1) {
+      await this.submitLog();
+      return;
+    }
+
+    const text = this.elements.logText.value.trim();
+    if (!text) {
+      this.toast('Please enter a short description', 'error');
+      this.elements.logText.focus();
+      return;
+    }
+
+    const startDate = new Date(summary.earliestStartMs);
+    const endDate = new Date(summary.latestEndMs);
+    const durationMs = endDate.getTime() - startDate.getTime();
+    if (!(durationMs > 0)) {
+      this.toast('Invalid queued timespan', 'error');
+      return;
+    }
+
+    const overlap = this.findOverlap(startDate, endDate);
+    if (overlap) {
+      this.setLogError('This timespan overlaps an existing worklog from you.');
+      return;
+    }
+
+    const ok = window.confirm(
+      `Send all queued sessions as one log?\n\n`
+      + `${summary.count} sessions from `
+      + `${this.formatPendingLogTimestamp(summary.earliestStartMs)} to `
+      + `${this.formatPendingLogTimestamp(summary.latestEndMs)}\n`
+      + `Total: ${this.formatDuration(durationMs)}`
+    );
+    if (!ok) return;
+
+    this.isSavingLog = true;
+    this.elements.registerLog.disabled = true;
+    this.elements.registerAllLogs.disabled = true;
+    this.elements.cancelLog.disabled = true;
+    this.elements.cancelAllLogs.disabled = true;
+    this.elements.registerAllLogs.textContent = 'Saving...';
+
+    try {
+      const saved = await GitHub.createLog({
+        text,
+        userLogin: this.user.login,
+        startAt: startDate.toISOString(),
+        endAt: endDate.toISOString(),
+        durationMs,
+        timezone: Time.getTimeZone()
+      });
+
+      this.toast('All sessions sent as one log', 'success');
+      if (saved && saved.path) {
+        this.addLogLocal(saved.path, saved.text || text);
+        const log = this.logsByPath.get(saved.path);
+        if (log) {
+          if (saved.endAt) {
+            const savedEndDate = new Date(saved.endAt);
+            if (!Number.isNaN(savedEndDate.getTime())) {
+              log.dateObj = savedEndDate;
+            }
+          }
+          if (Number.isFinite(saved.durationMs) && saved.durationMs > 0) {
+            log.durationMs = saved.durationMs;
+            log.duration = this.formatDuration(saved.durationMs);
+          }
+        }
+      } else {
+        await this.loadLogs(true);
+      }
+
+      this.clearPendingQueue();
+    } catch (err) {
+      console.error(err);
+      this.toast(`Failed to send all: ${err.message}`, 'error');
+    } finally {
+      this.isSavingLog = false;
+      this.elements.registerAllLogs.textContent = 'Send All';
+      this.elements.cancelLog.disabled = false;
+      this.elements.cancelAllLogs.disabled = false;
+      if (this.isAwaitingLog) {
+        this.validateLogTimespan();
+        const queued = this.getPendingQueueSummary();
+        this.elements.registerAllLogs.disabled = !(queued && queued.count > 1);
+      } else {
+        this.elements.registerLog.disabled = false;
+        this.elements.registerAllLogs.disabled = false;
       }
     }
   },
@@ -2272,8 +2478,47 @@ const App = {
     this.elements.timelineTooltip.classList.add('hidden');
   },
 
+  getLogEndTimeMs(log) {
+    if (!log) return Number.NaN;
+    if (log.dateObj instanceof Date && !Number.isNaN(log.dateObj.getTime())) {
+      return log.dateObj.getTime();
+    }
+
+    const fallback = this.buildDate(log.date, log.time);
+    if (!fallback || Number.isNaN(fallback.getTime())) {
+      return Number.NaN;
+    }
+
+    log.dateObj = fallback;
+    return fallback.getTime();
+  },
+
+  compareLogPathsForDisplay(pathA, pathB) {
+    if (pathA === pathB) return 0;
+
+    const logA = this.logsByPath.get(pathA);
+    const logB = this.logsByPath.get(pathB);
+    const timeA = this.getLogEndTimeMs(logA);
+    const timeB = this.getLogEndTimeMs(logB);
+
+    const validA = Number.isFinite(timeA);
+    const validB = Number.isFinite(timeB);
+
+    if (validA && validB && timeA !== timeB) {
+      return timeA - timeB;
+    }
+    if (validA && !validB) return -1;
+    if (!validA && validB) return 1;
+
+    return pathA.localeCompare(pathB);
+  },
+
+  getSortedLogPaths() {
+    return Array.from(this.logsByPath.keys()).sort((a, b) => this.compareLogPathsForDisplay(a, b));
+  },
+
   renderLogs() {
-    const paths = Array.from(this.logsByPath.keys()).sort();
+    const paths = this.getSortedLogPaths();
 
     if (paths.length === 0) {
       this.elements.logList.innerHTML = '';
@@ -2313,9 +2558,9 @@ const App = {
       return;
     }
 
-    newPaths.sort();
+    newPaths.sort((a, b) => this.compareLogPathsForDisplay(a, b));
     const lastRendered = this.renderedPaths[this.renderedPaths.length - 1];
-    if (newPaths[0] < lastRendered) {
+    if (this.compareLogPathsForDisplay(newPaths[0], lastRendered) < 0) {
       this.renderedPaths = [];
       this.renderedPathSet = new Set();
       this.renderLogs();
