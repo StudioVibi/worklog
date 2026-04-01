@@ -21,6 +21,8 @@ const App = {
   isPaused: false,
   isAwaitingLog: false,
   isSavingLog: false,
+  allUsersFilterValue: '__all_users__',
+  selectedUserFilter: null,
   elapsedMs: 0,
   pendingMs: 0,
   pendingLogQueue: [],
@@ -68,6 +70,11 @@ const App = {
     rowsDirty: true,
     renderScheduled: false
   },
+  history: {
+    scale: 'weekly',
+    windowSize: { daily: 14, weekly: 12, monthly: 12 },
+    anchorStart: null
+  },
   invoice: {
     activePreset: '',
     preview: null
@@ -114,8 +121,10 @@ const App = {
       logEmpty: document.getElementById('log-empty'),
       tabLogs: document.getElementById('tab-logs'),
       tabTimeline: document.getElementById('tab-timeline'),
+      tabHistory: document.getElementById('tab-history'),
       logsView: document.getElementById('logs-view'),
       timelineView: document.getElementById('timeline-view'),
+      historyView: document.getElementById('history-view'),
       timelineScroll: document.getElementById('timeline-scroll'),
       timelineCanvas: document.getElementById('timeline-canvas'),
       timelineGrid: document.getElementById('timeline-grid'),
@@ -123,6 +132,14 @@ const App = {
       timelineRows: document.getElementById('timeline-rows'),
       timelineTooltip: document.getElementById('timeline-tooltip'),
       timelineTotal: document.getElementById('timeline-total'),
+      userFilter: document.getElementById('user-filter'),
+      historyPrev: document.getElementById('history-prev'),
+      historyNext: document.getElementById('history-next'),
+      historyLabel: document.getElementById('history-label'),
+      historyTotal: document.getElementById('history-total'),
+      historyContainer: document.getElementById('history-container'),
+      historyList: document.getElementById('history-list'),
+      historyEmpty: document.getElementById('history-empty'),
       logModal: document.getElementById('log-modal'),
       logDate: document.getElementById('log-date'),
       logTime: document.getElementById('log-time'),
@@ -172,9 +189,18 @@ const App = {
     this.elements.intervalInput.addEventListener('change', () => this.updateInterval());
     this.elements.tabLogs.addEventListener('click', () => this.showLogsTab());
     this.elements.tabTimeline.addEventListener('click', () => this.showTimelineTab());
+    this.elements.tabHistory.addEventListener('click', () => this.showHistoryTab());
+    this.elements.userFilter.addEventListener('change', () => this.setUserFilter(this.elements.userFilter.value));
+    this.elements.historyPrev.addEventListener('click', () => this.shiftHistoryWindow(-1));
+    this.elements.historyNext.addEventListener('click', () => this.shiftHistoryWindow(1));
 
     document.querySelectorAll('.scale-btn').forEach(btn => {
-      btn.addEventListener('click', () => this.setTimelineScale(btn.dataset.scale));
+      if (btn.dataset.scale) {
+        btn.addEventListener('click', () => this.setTimelineScale(btn.dataset.scale));
+      }
+      if (btn.dataset.historyScale) {
+        btn.addEventListener('click', () => this.setHistoryScale(btn.dataset.historyScale));
+      }
     });
 
     this.elements.timelineScroll.addEventListener('scroll', () => this.handleTimelineScroll());
@@ -442,6 +468,101 @@ const App = {
     }
   },
 
+  getAvailableUsernames() {
+    const usernames = new Set();
+    if (this.user && this.user.login) {
+      usernames.add(this.user.login);
+    }
+    for (const log of this.logsByPath.values()) {
+      if (log && log.username) {
+        usernames.add(log.username);
+      }
+    }
+    return Array.from(usernames).sort((a, b) => a.localeCompare(b));
+  },
+
+  buildUserFilterOptions() {
+    const login = this.user && this.user.login ? this.user.login : '';
+    const others = this.getAvailableUsernames().filter(username => username !== login);
+    const options = [];
+
+    if (login) {
+      options.push({
+        value: login,
+        label: `@${login} (me)`
+      });
+    }
+
+    options.push({
+      value: this.allUsersFilterValue,
+      label: 'All users'
+    });
+
+    others.forEach((username) => {
+      options.push({
+        value: username,
+        label: `@${username}`
+      });
+    });
+
+    return options;
+  },
+
+  syncUserFilterOptions() {
+    const select = this.elements.userFilter;
+    if (!select) return false;
+
+    const options = this.buildUserFilterOptions();
+    const validValues = new Set(options.map(option => option.value));
+    const defaultValue = this.user && this.user.login ? this.user.login : this.allUsersFilterValue;
+    const nextValue = validValues.has(this.selectedUserFilter) ? this.selectedUserFilter : defaultValue;
+    const selectionChanged = nextValue !== this.selectedUserFilter;
+
+    this.selectedUserFilter = nextValue;
+    select.innerHTML = '';
+    options.forEach((option) => {
+      const element = document.createElement('option');
+      element.value = option.value;
+      element.textContent = option.label;
+      select.appendChild(element);
+    });
+    select.value = this.selectedUserFilter;
+    select.disabled = options.length === 0;
+
+    return selectionChanged;
+  },
+
+  getSelectedFilterUsername() {
+    const selected = this.selectedUserFilter;
+    if (!selected || selected === this.allUsersFilterValue) {
+      return null;
+    }
+    return selected;
+  },
+
+  getSelectedFilterLabel() {
+    const username = this.getSelectedFilterUsername();
+    if (!username) return 'all users';
+    return `@${username}`;
+  },
+
+  doesLogMatchSelectedUser(log) {
+    if (!log) return false;
+    const username = this.getSelectedFilterUsername();
+    if (!username) return true;
+    return log.username === username;
+  },
+
+  setUserFilter(value) {
+    const nextValue = String(value || '').trim() || (this.user && this.user.login ? this.user.login : this.allUsersFilterValue);
+    this.selectedUserFilter = nextValue;
+    this.syncUserFilterOptions();
+    this.renderLogs();
+    this.scheduleTimelineRender({ rows: true });
+    this.renderHistory();
+    this.updateLogUI();
+  },
+
   saveTimerState() {
     const data = {
       elapsed: Math.floor(this.elapsedMs),
@@ -650,6 +771,10 @@ const App = {
     this.user = await GitHub.getUser();
     this.elements.userAvatar.src = this.user.avatar_url;
     this.elements.userName.textContent = `@${this.user.login}`;
+    this.selectedUserFilter = this.user.login;
+    this.history.scale = 'weekly';
+    this.history.anchorStart = null;
+    this.syncUserFilterOptions();
 
     this.elements.loginScreen.classList.add('hidden');
     this.elements.mainScreen.classList.remove('hidden');
@@ -666,15 +791,19 @@ const App = {
   showLogsTab() {
     this.elements.logsView.classList.remove('hidden');
     this.elements.timelineView.classList.add('hidden');
+    this.elements.historyView.classList.add('hidden');
     this.elements.tabLogs.classList.add('active');
     this.elements.tabTimeline.classList.remove('active');
+    this.elements.tabHistory.classList.remove('active');
   },
 
   showTimelineTab() {
     this.elements.logsView.classList.add('hidden');
     this.elements.timelineView.classList.remove('hidden');
+    this.elements.historyView.classList.add('hidden');
     this.elements.tabLogs.classList.remove('active');
     this.elements.tabTimeline.classList.add('active');
+    this.elements.tabHistory.classList.remove('active');
     this.updateTimelineTotal();
     requestAnimationFrame(() => {
       const today = new Date();
@@ -685,8 +814,22 @@ const App = {
     });
   },
 
+  showHistoryTab() {
+    this.elements.logsView.classList.add('hidden');
+    this.elements.timelineView.classList.add('hidden');
+    this.elements.historyView.classList.remove('hidden');
+    this.elements.tabLogs.classList.remove('active');
+    this.elements.tabTimeline.classList.remove('active');
+    this.elements.tabHistory.classList.add('active');
+    this.renderHistory();
+  },
+
   isTimelineVisible() {
     return !this.elements.timelineView.classList.contains('hidden');
+  },
+
+  isHistoryVisible() {
+    return !this.elements.historyView.classList.contains('hidden');
   },
 
   openProfile() {
@@ -1001,8 +1144,13 @@ const App = {
   async logout() {
     this.stopTimers();
     await GitHub.logout();
+    this.user = null;
+    this.selectedUserFilter = null;
+    this.history.scale = 'weekly';
+    this.history.anchorStart = null;
     this.logsByPath.clear();
     this.elements.logList.innerHTML = '';
+    this.elements.historyList.innerHTML = '';
     this.renderedPaths = [];
     this.renderedPathSet = new Set();
     this.logsVersion = 0;
@@ -1087,35 +1235,52 @@ const App = {
     return rounded % 1 === 0 ? `${rounded.toFixed(0)}h` : `${rounded.toFixed(1)}h`;
   },
 
-  computePeriodTotalMs(scale) {
-    if (!this.user || !this.user.login) return 0;
+  getLogRange(log) {
+    if (!log) return null;
 
-    const { start, end } = this.getPeriodRange(scale);
-    const login = this.user.login;
+    const endTime = log.dateObj || this.buildDate(log.date, log.time);
+    if (!endTime || Number.isNaN(endTime.getTime())) return null;
+    if (!log.dateObj) {
+      log.dateObj = endTime;
+    }
+
+    const durationMs = log.durationMs || this.intervalMs;
+    if (!Number.isFinite(durationMs) || durationMs <= 0) return null;
+
+    return {
+      startTime: new Date(endTime.getTime() - durationMs),
+      endTime,
+      durationMs
+    };
+  },
+
+  sumLogsOverlapMs({ start, end, username = null } = {}) {
+    if (!(start instanceof Date) || Number.isNaN(start.getTime())) return 0;
+    if (!(end instanceof Date) || Number.isNaN(end.getTime())) return 0;
+    if (end <= start) return 0;
+
     let totalMs = 0;
-
     for (const log of this.logsByPath.values()) {
-      if (log.username !== login) continue;
-      const endTime = log.dateObj || this.buildDate(log.date, log.time);
-      if (!endTime) continue;
-      if (!log.dateObj) {
-        log.dateObj = endTime;
-      }
-      const durationMs = log.durationMs || this.intervalMs;
-      if (!Number.isFinite(durationMs) || durationMs <= 0) continue;
-      const startTime = new Date(endTime.getTime() - durationMs);
+      if (username && log.username !== username) continue;
 
-      if (endTime <= start || startTime >= end) continue;
+      const range = this.getLogRange(log);
+      if (!range) continue;
+      if (range.endTime <= start || range.startTime >= end) continue;
 
-      const overlapStart = startTime < start ? start : startTime;
-      const overlapEnd = endTime > end ? end : endTime;
-      const overlap = overlapEnd - overlapStart;
-      if (overlap > 0) {
-        totalMs += overlap;
+      const overlapStart = range.startTime < start ? start : range.startTime;
+      const overlapEnd = range.endTime > end ? end : range.endTime;
+      const overlapMs = overlapEnd - overlapStart;
+      if (overlapMs > 0) {
+        totalMs += overlapMs;
       }
     }
 
     return totalMs;
+  },
+
+  computePeriodTotalMs(scale, username = null) {
+    const { start, end } = this.getPeriodRange(scale);
+    return this.sumLogsOverlapMs({ start, end, username });
   },
 
   updateTodayHours() {
@@ -1145,7 +1310,7 @@ const App = {
       return;
     }
 
-    const totalMs = this.computePeriodTotalMs('daily');
+    const totalMs = this.computePeriodTotalMs('daily', this.user.login);
     const hours = totalMs / (60 * 60 * 1000);
     const text = `Today: ${this.formatHours(hours)}`;
     cache.date = dateValue;
@@ -1175,7 +1340,7 @@ const App = {
     const scale = this.timeline.scale || 'daily';
     const label = this.getPeriodLabel(scale);
     const { start, end } = this.getPeriodRange(scale);
-    const totalMs = this.computePeriodTotalMs(scale);
+    const totalMs = this.computePeriodTotalMs(scale, this.getSelectedFilterUsername());
     const hours = totalMs / (60 * 60 * 1000);
     const text = `${label}: ${this.formatHours(hours)}`;
     const startValue = Time.formatDateValue(Time.getZonedParts(start));
@@ -2221,7 +2386,7 @@ const App = {
     const width = this.timeline.periodCount * this.timeline.periodWidth[this.timeline.scale];
     const rangeStart = this.timeline.anchorStart;
     const rangeEnd = this.addPeriods(rangeStart, this.timeline.periodCount, this.timeline.scale);
-    const users = this.collectUsers();
+    const users = this.collectUsers(this.getSelectedFilterUsername());
 
     const fragment = document.createDocumentFragment();
 
@@ -2283,11 +2448,12 @@ const App = {
     rows.appendChild(fragment);
   },
 
-  collectUsers() {
+  collectUsers(username = null) {
     const byUser = new Map();
 
     for (const log of this.logsByPath.values()) {
       if (!log.username) continue;
+      if (username && log.username !== username) continue;
       const dateObj = log.dateObj || this.buildDate(log.date, log.time);
       if (!dateObj) continue;
       const entry = byUser.get(log.username) || [];
@@ -2304,6 +2470,188 @@ const App = {
         username,
         logs: logs.sort((a, b) => a.dateObj - b.dateObj)
       }));
+  },
+
+  getHistoryWindowSize(scale = this.history.scale) {
+    return this.history.windowSize[scale] || this.history.windowSize.weekly;
+  },
+
+  getCurrentHistoryAnchorStart(scale = this.history.scale) {
+    return this.startOfPeriod(new Date(), scale);
+  },
+
+  getHistoryAnchorStart() {
+    if (!this.history.anchorStart) {
+      this.history.anchorStart = this.getCurrentHistoryAnchorStart(this.history.scale);
+    }
+    return this.history.anchorStart;
+  },
+
+  setHistoryScale(scale) {
+    if (!scale || scale === this.history.scale) return;
+
+    this.history.scale = scale;
+    this.history.anchorStart = this.getCurrentHistoryAnchorStart(scale);
+    document.querySelectorAll('[data-history-scale]').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.historyScale === scale);
+    });
+    this.renderHistory();
+  },
+
+  shiftHistoryWindow(direction) {
+    const step = Number(direction) < 0 ? -1 : 1;
+    const scale = this.history.scale;
+    const count = this.getHistoryWindowSize(scale);
+    const currentAnchor = this.getCurrentHistoryAnchorStart(scale);
+    const nextAnchor = this.addPeriods(this.getHistoryAnchorStart(), step * count, scale);
+
+    if (nextAnchor > currentAnchor) {
+      this.history.anchorStart = currentAnchor;
+    } else {
+      this.history.anchorStart = nextAnchor;
+    }
+
+    this.renderHistory();
+  },
+
+  formatHistoryBoundary(date) {
+    const parts = Time.getZonedParts(date);
+    return `${parts.year} ${this.months[parts.month - 1]} ${String(parts.day).padStart(2, '0')}`;
+  },
+
+  formatHistoryMonth(date) {
+    const parts = Time.getZonedParts(date);
+    return `${parts.year} ${this.months[parts.month - 1]}`;
+  },
+
+  formatHistoryPeriodLabel(start, scale) {
+    if (scale === 'daily') {
+      return this.formatHistoryBoundary(start);
+    }
+
+    if (scale === 'weekly') {
+      const endInclusive = this.addDays(this.addPeriods(start, 1, 'weekly'), -1);
+      return `${this.formatHistoryBoundary(start)} -> ${this.formatHistoryBoundary(endInclusive)}`;
+    }
+
+    return this.formatHistoryMonth(start);
+  },
+
+  formatHistoryWindowLabel(periods, scale) {
+    if (!Array.isArray(periods) || periods.length === 0) {
+      return 'No periods';
+    }
+
+    const first = periods[0].start;
+    const last = periods[periods.length - 1];
+    const lastInclusive = this.addDays(last.end, -1);
+
+    if (scale === 'monthly') {
+      return `${this.formatHistoryMonth(first)} -> ${this.formatHistoryMonth(last.start)}`;
+    }
+
+    return `${this.formatHistoryBoundary(first)} -> ${this.formatHistoryBoundary(lastInclusive)}`;
+  },
+
+  getMatchingLogsCount(username = this.getSelectedFilterUsername()) {
+    let count = 0;
+    for (const log of this.logsByPath.values()) {
+      if (username && log.username !== username) continue;
+      count += 1;
+    }
+    return count;
+  },
+
+  getHistorySummary() {
+    const scale = this.history.scale;
+    const count = this.getHistoryWindowSize(scale);
+    const anchorStart = this.getHistoryAnchorStart();
+    const windowStart = this.addPeriods(anchorStart, -(count - 1), scale);
+    const username = this.getSelectedFilterUsername();
+    const periods = [];
+    let maxTotalMs = 0;
+    let totalMs = 0;
+
+    for (let index = 0; index < count; index += 1) {
+      const start = this.addPeriods(windowStart, index, scale);
+      const end = this.addPeriods(start, 1, scale);
+      const periodTotalMs = this.sumLogsOverlapMs({ start, end, username });
+      maxTotalMs = Math.max(maxTotalMs, periodTotalMs);
+      totalMs += periodTotalMs;
+      periods.push({
+        start,
+        end,
+        totalMs: periodTotalMs,
+        label: this.formatHistoryPeriodLabel(start, scale)
+      });
+    }
+
+    return {
+      scale,
+      periods,
+      totalMs,
+      maxTotalMs,
+      hasMatchingLogs: this.getMatchingLogsCount(username) > 0
+    };
+  },
+
+  updateHistoryControls(summary) {
+    if (!summary) return;
+
+    document.querySelectorAll('[data-history-scale]').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.historyScale === summary.scale);
+    });
+
+    this.elements.historyLabel.textContent = this.formatHistoryWindowLabel(summary.periods, summary.scale);
+    this.elements.historyTotal.textContent = `Total: ${this.formatHours(summary.totalMs / (60 * 60 * 1000))}`;
+    this.elements.historyTotal.title =
+      `Total logged for ${this.getSelectedFilterLabel()} in this history window: `
+      + `${this.formatHours(summary.totalMs / (60 * 60 * 1000))}`;
+
+    const currentAnchor = this.getCurrentHistoryAnchorStart(summary.scale);
+    this.elements.historyNext.disabled = this.getHistoryAnchorStart().getTime() >= currentAnchor.getTime();
+  },
+
+  renderHistory() {
+    if (!this.elements.historyList) return;
+
+    const summary = this.getHistorySummary();
+    this.updateHistoryControls(summary);
+    this.elements.historyList.innerHTML = '';
+
+    const fragment = document.createDocumentFragment();
+    summary.periods.forEach((period) => {
+      const row = document.createElement('div');
+      row.className = 'history-row';
+
+      const label = document.createElement('div');
+      label.className = 'history-period';
+      label.textContent = period.label;
+
+      const hours = document.createElement('div');
+      hours.className = 'history-hours';
+      hours.textContent = this.formatHours(period.totalMs / (60 * 60 * 1000));
+
+      const track = document.createElement('div');
+      track.className = 'history-bar-track';
+
+      const bar = document.createElement('div');
+      bar.className = 'history-bar';
+      const widthPercent = summary.maxTotalMs > 0 ? (period.totalMs / summary.maxTotalMs) * 100 : 0;
+      bar.style.width = `${Math.max(0, Math.min(100, widthPercent))}%`;
+      track.appendChild(bar);
+
+      row.appendChild(label);
+      row.appendChild(hours);
+      row.appendChild(track);
+      fragment.appendChild(row);
+    });
+
+    this.elements.historyList.appendChild(fragment);
+    this.elements.historyEmpty.textContent = summary.hasMatchingLogs
+      ? ''
+      : `No history for ${this.getSelectedFilterLabel()}.`;
+    this.elements.historyEmpty.classList.toggle('hidden', summary.hasMatchingLogs);
   },
 
   buildDate(dateStr, timeStr) {
@@ -2514,17 +2862,40 @@ const App = {
   },
 
   getSortedLogPaths() {
-    return Array.from(this.logsByPath.keys()).sort((a, b) => this.compareLogPathsForDisplay(a, b));
+    const paths = [];
+    for (const [path, log] of this.logsByPath.entries()) {
+      if (this.doesLogMatchSelectedUser(log)) {
+        paths.push(path);
+      }
+    }
+    return paths.sort((a, b) => this.compareLogPathsForDisplay(a, b));
+  },
+
+  updateLogsEmptyState(visibleCount) {
+    if (!this.elements.logEmpty) return;
+
+    if (visibleCount > 0) {
+      this.elements.logEmpty.textContent = 'No logs yet.';
+      return;
+    }
+
+    if (this.logsByPath.size === 0) {
+      this.elements.logEmpty.textContent = 'No logs yet.';
+      return;
+    }
+
+    this.elements.logEmpty.textContent = `No logs for ${this.getSelectedFilterLabel()}.`;
   },
 
   renderLogs() {
+    this.syncUserFilterOptions();
     const paths = this.getSortedLogPaths();
 
     if (paths.length === 0) {
       this.elements.logList.innerHTML = '';
       this.renderedPaths = [];
       this.renderedPathSet = new Set();
-      this.updateLogUI();
+      this.updateLogUI(0);
       this.scheduleTimelineRender({ rows: true });
       return;
     }
@@ -2546,7 +2917,7 @@ const App = {
       this.elements.logList.appendChild(fragment);
       this.renderedPaths = paths;
       this.renderedPathSet = new Set(paths);
-      this.updateLogUI();
+      this.updateLogUI(paths.length);
       this.scrollToBottom();
       this.scheduleTimelineRender({ rows: true });
       return;
@@ -2576,7 +2947,7 @@ const App = {
       this.renderedPaths.push(path);
     }
     this.elements.logList.appendChild(fragment);
-    this.updateLogUI();
+    this.updateLogUI(paths.length);
     this.scrollToBottom();
     this.scheduleTimelineRender({ rows: true });
   },
@@ -2610,12 +2981,17 @@ const App = {
     return item;
   },
 
-  updateLogUI() {
-    const hasLogs = this.logsByPath.size > 0;
+  updateLogUI(visibleLogCount = null) {
+    this.syncUserFilterOptions();
+    const count = visibleLogCount == null ? this.getSortedLogPaths().length : visibleLogCount;
     this.elements.logLoading.classList.add('hidden');
-    this.elements.logEmpty.classList.toggle('hidden', hasLogs);
+    this.updateLogsEmptyState(count);
+    this.elements.logEmpty.classList.toggle('hidden', count > 0);
     this.updateTodayHours();
     this.updateTimelineTotal();
+    if (this.isHistoryVisible()) {
+      this.renderHistory();
+    }
   },
 
   scrollToBottom() {

@@ -518,10 +518,14 @@ app.get('/v1/logs', requireAuth, asyncHandler(async (req, res) => {
   const whereSql = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
   const sql = `
     SELECT *
-    FROM logs
-    ${whereSql}
+    FROM (
+      SELECT *
+      FROM logs
+      ${whereSql}
+      ORDER BY end_at DESC
+      LIMIT $${params.length}
+    ) recent_logs
     ORDER BY end_at ASC
-    LIMIT $${params.length}
   `;
 
   const result = await query(sql, params);

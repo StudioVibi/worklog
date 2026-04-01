@@ -94,8 +94,16 @@
               <button id="tab-logs" class="tab-btn active">Logs</button>
               <span class="tab-separator">|</span>
               <button id="tab-timeline" class="tab-btn">Timeline</button>
+              <span class="tab-separator">|</span>
+              <button id="tab-history" class="tab-btn">History</button>
             </div>
-            <div class="tz-indicator" title="Times shown in Sao Paulo (America/Sao_Paulo)">TZ: Sao Paulo</div>
+            <div class="log-header-tools">
+              <label class="user-filter-control" title="Filter by GitHub username">
+                <span>User</span>
+                <select id="user-filter" aria-label="Filter by GitHub username"></select>
+              </label>
+              <div class="tz-indicator" title="Times shown in Sao Paulo (America/Sao_Paulo)">TZ: Sao Paulo</div>
+            </div>
           </div>
 
           <div id="logs-view" class="logs-view">
@@ -107,20 +115,40 @@
           </div>
 
           <div id="timeline-view" class="timeline-view hidden">
-          <div class="timeline-controls">
-            <div class="timeline-scales">
-              <button class="scale-btn active" data-scale="daily">Daily</button>
-              <button class="scale-btn" data-scale="weekly">Weekly</button>
-              <button class="scale-btn" data-scale="monthly">Monthly</button>
+            <div class="timeline-controls">
+              <div class="timeline-scales">
+                <button class="scale-btn active" data-scale="daily">Daily</button>
+                <button class="scale-btn" data-scale="weekly">Weekly</button>
+                <button class="scale-btn" data-scale="monthly">Monthly</button>
+              </div>
+              <div id="timeline-total" class="counter timeline-total" title="Total logged for selected period">Today: 0h</div>
             </div>
-            <div id="timeline-total" class="counter timeline-total" title="Total logged for selected period">Today: 0h</div>
-          </div>
             <div id="timeline-scroll" class="timeline-scroll">
               <div id="timeline-canvas" class="timeline-canvas">
                 <div id="timeline-grid" class="timeline-grid"></div>
                 <div id="timeline-labels" class="timeline-labels"></div>
                 <div id="timeline-rows" class="timeline-rows"></div>
               </div>
+            </div>
+          </div>
+
+          <div id="history-view" class="history-view hidden">
+            <div class="history-controls">
+              <div class="history-scales">
+                <button class="scale-btn" data-history-scale="daily">Daily</button>
+                <button class="scale-btn active" data-history-scale="weekly">Weekly</button>
+                <button class="scale-btn" data-history-scale="monthly">Monthly</button>
+              </div>
+              <div class="history-nav">
+                <button id="history-prev" class="scale-btn" type="button" aria-label="Previous history window">Prev</button>
+                <div id="history-label" class="history-label">Current window</div>
+                <button id="history-next" class="scale-btn" type="button" aria-label="Next history window">Next</button>
+              </div>
+              <div id="history-total" class="counter history-total" title="Total logged for selected history window">Total: 0h</div>
+            </div>
+            <div id="history-container" class="history-container">
+              <div id="history-list" class="history-list"></div>
+              <div id="history-empty" class="log-empty hidden">No history yet.</div>
             </div>
           </div>
         </div>
