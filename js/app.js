@@ -2919,7 +2919,8 @@ const App = {
   showTimelineTooltip(event, log) {
     const tooltip = this.elements.timelineTooltip;
     const duration = log.duration || this.formatDuration(log.durationMs || this.intervalMs);
-    tooltip.textContent = `${log.date} ${log.time}\n${duration}\n@${log.username}\n${log.text}`;
+    const stamp = this.formatLogStamp(log);
+    tooltip.textContent = `${stamp.date} ${stamp.time}\n${duration}\n@${log.username}\n${log.text}`;
     tooltip.classList.remove('hidden');
 
     const padding = 12;
@@ -3059,13 +3060,29 @@ const App = {
     this.scheduleTimelineRender({ rows: true });
   },
 
+  // Format a log's stored instant in the active view zone. The log's `date`/
+  // `time` fields are the Sao Paulo (billing) wall-clock from its filename, so
+  // they must never be shown directly when the user views in another zone.
+  formatLogStamp(log) {
+    const end = log.dateObj || this.buildDate(log.date, log.time);
+    if (!end || Number.isNaN(end.getTime())) {
+      return { date: log.date || '', time: log.time || '' };
+    }
+    const parts = Time.getZonedParts(end);
+    return {
+      date: Time.formatDateValue(parts),
+      time: `${Time.pad2(parts.hour)}:${Time.pad2(parts.minute)}:${Time.pad2(parts.second)}`
+    };
+  },
+
   buildLogItem(log) {
     const item = document.createElement('div');
     item.className = 'log-item';
 
     const meta = document.createElement('div');
     meta.className = 'log-meta';
-    meta.appendChild(document.createTextNode(`${log.date} ${log.time} `));
+    const stamp = this.formatLogStamp(log);
+    meta.appendChild(document.createTextNode(`${stamp.date} ${stamp.time} `));
 
     if (log.duration) {
       meta.appendChild(document.createTextNode(`${log.duration} `));
