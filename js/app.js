@@ -2765,7 +2765,11 @@ const App = {
     const minute = Number(timeParts[1] || 0);
     const second = Number(timeParts[2] || 0);
     if (!year || !month || !day) return null;
-    return Time.zonedPartsToDate({ year, month, day, hour, minute, second });
+    // Log filenames are always encoded in the billing (Sao Paulo) zone, so the
+    // wall-clock must be interpreted there regardless of the user's view zone.
+    // This keeps the reconstructed end instant correct on the cache/offline
+    // fallback path (the API load otherwise overrides dateObj with endAt).
+    return Time.zonedPartsToDate({ year, month, day, hour, minute, second }, Time.getBillingTimeZone());
   },
 
   parseDuration(duration) {

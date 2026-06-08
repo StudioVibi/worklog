@@ -42,6 +42,20 @@ test('detectLocalTimeZone returns a non-empty zone string', () => {
   assert.ok(zone.length > 0);
 });
 
+test('interpreting billing-zone parts is independent of the view zone (buildDate guarantee)', () => {
+  // A log filename encodes 09:00 Sao Paulo; the reconstructed instant must be
+  // 12:00Z no matter what zone the user is currently viewing in.
+  const spParts = { year: 2026, month: 6, day: 8, hour: 9, minute: 0, second: 0 };
+  const expected = '2026-06-08T12:00:00.000Z';
+
+  for (const viewZone of [SP, 'Europe/Lisbon', 'America/New_York', 'Asia/Tokyo']) {
+    Time.setTimeZone(viewZone);
+    const instant = Time.zonedPartsToDate(spParts, Time.getBillingTimeZone());
+    assert.equal(instant.toISOString(), expected, `wrong instant while viewing in ${viewZone}`);
+  }
+  Time.setTimeZone(SP);
+});
+
 test('view-zone round-trip matches the backend (UTC-3 in Sao Paulo)', () => {
   Time.setTimeZone(SP);
   const instant = new Date('2026-06-08T12:34:56.000Z');
