@@ -54,7 +54,8 @@ const App = {
     timerState: 'worklog_timer_state',
     lastSeen: 'worklog_last_seen_sha',
     interval: 'worklog_interval_minutes',
-    pendingLogs: 'worklog_pending_logs'
+    pendingLogs: 'worklog_pending_logs',
+    viewTimeZone: 'worklog_view_timezone'
   },
   lastSeenSha: null,
   intervalMs: 60 * 60 * 1000,
@@ -87,6 +88,7 @@ const App = {
     this.loadTimerState();
     this.loadLastSeen();
     this.loadInterval();
+    this.loadViewTimeZone();
     this.setupAudioUnlock();
     this.originalTitle = document.title;
 
@@ -110,6 +112,7 @@ const App = {
       helpBtn: document.getElementById('help-btn'),
       counter: document.getElementById('counter'),
       todayHours: document.getElementById('today-hours'),
+      tzToggle: document.getElementById('tz-toggle'),
       invoiceBtn: document.getElementById('invoice-btn'),
       intervalInput: document.getElementById('interval-input'),
       userPill: document.getElementById('user-pill'),
@@ -181,6 +184,9 @@ const App = {
     this.elements.helpBtn.addEventListener('click', () => this.showHelp());
     this.elements.counter.addEventListener('click', () => this.triggerManualLog());
     this.elements.invoiceBtn.addEventListener('click', () => this.openInvoiceModal());
+    if (this.elements.tzToggle) {
+      this.elements.tzToggle.addEventListener('click', () => this.toggleViewTimeZone());
+    }
     this.elements.userPill.addEventListener('click', () => this.openProfile());
     this.elements.registerLog.addEventListener('click', () => this.submitLog());
     this.elements.registerAllLogs.addEventListener('click', () => this.submitAllLogs());
@@ -466,6 +472,103 @@ const App = {
     if (stored) {
       this.lastSeenSha = stored;
     }
+  },
+
+  // View timezone: display only. Defaults to the browser's local zone on first
+  // run (auto-detect), then persists the user's explicit choice. Billing and
+  // invoices always use Sao Paulo regardless of this value.
+  loadViewTimeZone() {
+    let stored = '';
+    try {
+      stored = localStorage.getItem(this.storage.viewTimeZone) || '';
+    } catch (err) {
+      stored = '';
+    }
+    const zone = stored || Time.detectLocalTimeZone();
+    Time.setTimeZone(zone);
+    this.updateTzIndicator();
+  },
+
+  updateTzIndicator() {
+    const btn = this.elements.tzToggle;
+    if (!btn) return;
+
+    const viewZone = Time.getTimeZone();
+    const localZone = Time.detectLocalTimeZone();
+    const isLocalSameAsBilling = Time.isBillingTimeZone(localZone);
+    const viewingBilling = Time.isBillingTimeZone(viewZone);
+
+    btn.textContent = `TZ: ${Time.shortZoneLabel(viewZone)}`;
+    btn.classList.toggle('tz-local', !viewingBilling);
+
+    if (isLocalSameAsBilling) {
+      // The user's local zone is already Sao Paulo: nothing to toggle to.
+      btn.disabled = true;
+      btn.title = 'Times shown in Sao Paulo (your local timezone). Billing always uses Sao Paulo.';
+      return;
+    }
+
+    btn.disabled = false;
+    const target = viewingBilling ? Time.shortZoneLabel(localZone) : 'Sao Paulo';
+    btn.title =
+      `Times shown in ${Time.shortZoneLabel(viewZone)} (${viewZone}). `
+      + `Click to switch to ${target}. Billing/invoices always use Sao Paulo.`;
+  },
+
+  toggleViewTimeZone() {
+    const localZone = Time.detectLocalTimeZone();
+    if (Time.isBillingTimeZone(localZone)) {
+      // Local zone is Sao Paulo; the view is already the only meaningful option.
+      this.updateTzIndicator();
+      return;
+    }
+
+    const nextZone = Time.isBillingTimeZone(Time.getTimeZone())
+      ? localZone
+      : Time.getBillingTimeZone();
+
+    Time.setTimeZone(nextZone);
+    try {
+      localStorage.setItem(this.storage.viewTimeZone, nextZone);
+    } catch (err) {
+      // Ignore storage failures; the choice still applies for this session.
+    }
+
+    this.updateTzIndicator();
+    this.refreshViewsForTimeZoneChange();
+    this.toast(`View timezone: ${Time.shortZoneLabel(nextZone)}`, 'success');
+  },
+
+  // A view-zone switch changes wall-clock rendering and day/period bucketing,
+  // so every zone-dependent surface must be recomputed. Stored instants and the
+  // IndexedDB cache are zone-agnostic, so no data is invalidated.
+  refreshViewsForTimeZoneChange() {
+    // Bust the memoized "Today" total (its key does not include the zone).
+    this.todayHoursCache.date = null;
+    this.todayHoursCache.version = -1;
+
+    // Force a full log-list rebuild so timestamps/date headers re-render.
+    this.renderedPaths = [];
+    this.renderedPathSet = new Set();
+    this.renderLogs();
+
+    // Re-anchor the timeline to "now" in the new zone and re-bucket.
+    this.timeline.anchorStart = null;
+    this.timeline.gridDirty = true;
+    this.timeline.rowsDirty = true;
+    if (this.timeline.initialized) {
+      const periodStart = this.startOfPeriod(new Date(), this.timeline.scale);
+      this.ensureTimelineSized(periodStart, 'left');
+      this.positionTimelineOnDate(periodStart, 'left');
+      this.renderTimeline();
+    }
+
+    // Re-center history on the current window in the new zone.
+    this.history.anchorStart = null;
+    this.renderHistory();
+
+    this.updateTodayHours();
+    this.updateTimelineTotal();
   },
 
   getAvailableUsernames() {
@@ -870,7 +973,7 @@ const App = {
     if (!this.hasInvoiceModule()) return;
 
     const range = Invoice.getPresetRange(preset, {
-      timeZone: Time.getTimeZone()
+      timeZone: Time.getBillingTimeZone()
     });
 
     this.elements.invoiceStartDate.value = range.startValue;
@@ -977,7 +1080,7 @@ const App = {
     return Invoice.parseRange(
       this.elements.invoiceStartDate.value,
       this.elements.invoiceEndDate.value,
-      { timeZone: Time.getTimeZone() }
+      { timeZone: Time.getBillingTimeZone() }
     );
   },
 
@@ -1016,7 +1119,7 @@ const App = {
         ...prepared,
         startDate: range.startDate,
         endExclusive: range.endExclusive,
-        endDate: Invoice.addDays(range.endExclusive, -1, Time.getTimeZone()),
+        endDate: Invoice.addDays(range.endExclusive, -1, Time.getBillingTimeZone()),
         limitReached: logs.length >= limit
       };
       this.renderInvoicePreview();
@@ -1075,8 +1178,8 @@ const App = {
     this.elements.invoiceGroupedBody.appendChild(fragment);
     this.elements.invoiceGroupedEmpty.classList.toggle('hidden', preview.groupedLines.length > 0);
 
-    const startValue = Invoice.toDateValue(preview.startDate, Time.getTimeZone());
-    const endValue = Invoice.toDateValue(preview.endDate, Time.getTimeZone());
+    const startValue = Invoice.toDateValue(preview.startDate, Time.getBillingTimeZone());
+    const endValue = Invoice.toDateValue(preview.endDate, Time.getBillingTimeZone());
     const totalAmount = Invoice.formatMoney(preview.totalHours * rate, currency);
     const warning = preview.limitReached
       ? ' Warning: query reached limit (10000), narrow the period if needed.'
@@ -1113,7 +1216,7 @@ const App = {
     Invoice.saveSettings(this.user.login, this.readInvoiceSettingsForm());
 
     const preview = this.invoice.preview;
-    const timeZone = Time.getTimeZone();
+    const timeZone = Time.getBillingTimeZone();
     const yaml = Invoice.buildYaml({
       userLogin: this.user.login,
       timeZone,
@@ -1288,7 +1391,7 @@ const App = {
     if (!el) return;
     if (!this.user || !this.user.login) {
       el.textContent = 'Today: --';
-      el.title = 'Hours logged today (Sao Paulo)';
+      el.title = `Hours logged today (${Time.shortZoneLabel(Time.getTimeZone())})`;
       return;
     }
 
@@ -1319,7 +1422,7 @@ const App = {
     cache.intervalMs = intervalMs;
     cache.text = text;
     el.textContent = text;
-    el.title = `Hours logged today (${dateValue}, Sao Paulo): ${text}`;
+    el.title = `Hours logged today (${dateValue}, ${Time.shortZoneLabel(Time.getTimeZone())}): ${text}`;
   },
 
   getPeriodLabel(scale) {
@@ -1577,7 +1680,7 @@ const App = {
         startAt: timespan.startDate.toISOString(),
         endAt: timespan.endDate.toISOString(),
         durationMs: timespan.durationMs,
-        timezone: Time.getTimeZone()
+        timezone: Time.getBillingTimeZone()
       });
 
       this.toast('Log sent', 'success');
@@ -1673,7 +1776,7 @@ const App = {
         startAt: startDate.toISOString(),
         endAt: endDate.toISOString(),
         durationMs,
-        timezone: Time.getTimeZone()
+        timezone: Time.getBillingTimeZone()
       });
 
       this.toast('All sessions sent as one log', 'success');
@@ -2662,7 +2765,11 @@ const App = {
     const minute = Number(timeParts[1] || 0);
     const second = Number(timeParts[2] || 0);
     if (!year || !month || !day) return null;
-    return Time.zonedPartsToDate({ year, month, day, hour, minute, second });
+    // Log filenames are always encoded in the billing (Sao Paulo) zone, so the
+    // wall-clock must be interpreted there regardless of the user's view zone.
+    // This keeps the reconstructed end instant correct on the cache/offline
+    // fallback path (the API load otherwise overrides dateObj with endAt).
+    return Time.zonedPartsToDate({ year, month, day, hour, minute, second }, Time.getBillingTimeZone());
   },
 
   parseDuration(duration) {

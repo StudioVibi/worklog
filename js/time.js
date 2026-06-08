@@ -1,5 +1,10 @@
-// Time helpers for Worklog (default: Sao Paulo)
+// Time helpers for Worklog
+// Two distinct zones:
+//   - BILLING_TIMEZONE: immutable Sao Paulo baseline. Used for stored logs,
+//     GitHub filenames and the entire Invoice flow. Never changes.
+//   - timeZone (the "view" zone): user-switchable, display only.
 const Time = {
+  BILLING_TIMEZONE: 'America/Sao_Paulo',
   timeZone: 'America/Sao_Paulo',
   tzFormatters: {},
 
@@ -7,10 +12,34 @@ const Time = {
     return this.timeZone || 'America/Sao_Paulo';
   },
 
+  getBillingTimeZone() {
+    return this.BILLING_TIMEZONE;
+  },
+
   setTimeZone(timeZone) {
     if (!timeZone) return;
     this.timeZone = timeZone;
     this.tzFormatters = {};
+  },
+
+  detectLocalTimeZone() {
+    try {
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return zone || this.BILLING_TIMEZONE;
+    } catch (err) {
+      return this.BILLING_TIMEZONE;
+    }
+  },
+
+  isBillingTimeZone(zone) {
+    return String(zone || '') === this.BILLING_TIMEZONE;
+  },
+
+  // Friendly short label, e.g. "America/Sao_Paulo" -> "Sao Paulo".
+  shortZoneLabel(zone) {
+    const value = String(zone || this.getTimeZone());
+    const tail = value.includes('/') ? value.split('/').pop() : value;
+    return tail.replace(/_/g, ' ');
   },
 
   getTimeZoneFormatter(timeZone) {
@@ -137,3 +166,9 @@ const Time = {
     return { hour, minute };
   }
 };
+
+// Allow Node-based tests to require this module without affecting the browser,
+// where `Time` is consumed as a global.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = Time;
+}
