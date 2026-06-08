@@ -355,6 +355,28 @@ button.danger {
   white-space: nowrap;
 }
 
+.tz-toggle {
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.tz-toggle:hover:not(:disabled) {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.tz-toggle:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.tz-toggle.tz-local {
+  border-color: var(--line);
+  color: var(--ink);
+  font-weight: 500;
+}
+
 .tab-bar {
   display: inline-flex;
   gap: 8px;
