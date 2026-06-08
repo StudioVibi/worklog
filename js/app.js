@@ -144,6 +144,7 @@ const App = {
       historyList: document.getElementById('history-list'),
       historyEmpty: document.getElementById('history-empty'),
       logModal: document.getElementById('log-modal'),
+      logPauseBtn: document.getElementById('log-pause-btn'),
       logDate: document.getElementById('log-date'),
       logTime: document.getElementById('log-time'),
       logHours: document.getElementById('log-hours'),
@@ -181,6 +182,9 @@ const App = {
     this.elements.loginBtn.addEventListener('click', () => this.login());
     this.elements.logoutBtn.addEventListener('click', () => this.logout());
     this.elements.pauseBtn.addEventListener('click', () => this.togglePause());
+    if (this.elements.logPauseBtn) {
+      this.elements.logPauseBtn.addEventListener('click', () => this.togglePause());
+    }
     this.elements.helpBtn.addEventListener('click', () => this.showHelp());
     this.elements.counter.addEventListener('click', () => this.triggerManualLog());
     this.elements.invoiceBtn.addEventListener('click', () => this.openInvoiceModal());
@@ -1504,6 +1508,7 @@ const App = {
 
     this.activePendingLog = current;
     this.showModal(this.elements.logModal);
+    this.setPauseButton(this.isPaused);
     this.populateLogTimespan(current.durationMs, current.endAtMs);
     this.validateLogTimespan();
     setTimeout(() => this.elements.logText.focus(), 100);
@@ -1589,9 +1594,14 @@ const App = {
   },
 
   setPauseButton(isPaused) {
-    this.elements.pauseBtn.innerHTML = isPaused ? this.icons.play : this.icons.pause;
-    this.elements.pauseBtn.title = isPaused ? 'Resume' : 'Pause';
-    this.elements.pauseBtn.setAttribute('aria-label', isPaused ? 'Resume' : 'Pause');
+    const icon = isPaused ? this.icons.play : this.icons.pause;
+    const label = isPaused ? 'Resume' : 'Pause';
+    for (const btn of [this.elements.pauseBtn, this.elements.logPauseBtn]) {
+      if (!btn) continue;
+      btn.innerHTML = icon;
+      btn.title = label;
+      btn.setAttribute('aria-label', label);
+    }
   },
 
   showHelp() {
